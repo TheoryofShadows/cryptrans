@@ -18,6 +18,6 @@
   },
   "devDependencies": {
     "chai": "^4.3.10",
-    "circom_tester": "^0.0.19"
+    "circom_tester": "^0.0.24"
   }
 }
