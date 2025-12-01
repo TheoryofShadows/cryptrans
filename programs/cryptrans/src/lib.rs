@@ -794,6 +794,119 @@ pub mod cryptrans {
 
         Ok(())
     }
+
+    /// Slash an oracle for providing false attestations (Week 4)
+    /// Called by governance to punish malicious oracles
+    /// Reduces reputation and slashes collateral
+    pub fn slash_oracle(
+        ctx: Context<SlashOracleContext>,
+        oracle_pubkey: Pubkey,
+        evidence: String,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Validate evidence
+        require!(evidence.len() <= 500, ErrorCode::DescriptionTooLong);
+
+        // Verify caller is governance admin (simplified - in production would check DAO vote)
+        require!(
+            ctx.accounts.governance.key() == ctx.accounts.admin.key(),
+            ErrorCode::UnauthorizedAdmin
+        );
+
+        // Extract values before mutable borrow
+        let (stored_oracle_pubkey, current_collateral, current_reputation, current_failed) = {
+            let registry = &ctx.accounts.oracle_registry;
+            require!(registry.collateral > 0, ErrorCode::OracleNotRegistered);
+
+            (
+                registry.oracle_pubkey,
+                registry.collateral,
+                registry.reputation_score,
+                registry.failed_attestations,
+            )
+        };
+
+        // Calculate slashing amounts
+        // Slash 25% of collateral
+        let collateral_to_slash = current_collateral / 4;
+        require!(collateral_to_slash > 0, ErrorCode::InsufficientOracleCollateral);
+
+        // Reduce reputation by 30 points (0-100 scale)
+        let reputation_penalty = 30u32.min(current_reputation);
+
+        // Transfer slashed collateral to governance treasury
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.oracle_collateral_token_account.to_account_info(),
+            to: ctx.accounts.governance_treasury.to_account_info(),
+            authority: ctx.accounts.oracle_registry.to_account_info(),
+        };
+
+        let oracle_key_bytes = oracle_pubkey.as_ref();
+        let seeds = &[
+            b"oracle",
+            oracle_key_bytes,
+            &[ctx.bumps.oracle_registry],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+        token::transfer(cpi_ctx, collateral_to_slash)?;
+
+        // Now do mutable updates after CPI
+        let oracle_registry = &mut ctx.accounts.oracle_registry;
+        oracle_registry.collateral = oracle_registry.collateral.saturating_sub(collateral_to_slash);
+        oracle_registry.reputation_score = oracle_registry.reputation_score.saturating_sub(reputation_penalty);
+        oracle_registry.failed_attestations = oracle_registry.failed_attestations.saturating_add(1);
+
+        // Emit slashing event
+        emit!(OracleSlashed {
+            oracle_pubkey: stored_oracle_pubkey,
+            collateral_slashed: collateral_to_slash,
+            reputation_penalty,
+            reason: evidence,
+            slashed_at: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Recover oracle reputation through governance vote
+    /// Allows redemption if oracle proves they've corrected behavior
+    pub fn recover_oracle_reputation(
+        ctx: Context<RecoverOracleReputationContext>,
+        _oracle_pubkey: Pubkey,
+        evidence_of_correction: String,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Validate evidence
+        require!(evidence_of_correction.len() <= 500, ErrorCode::DescriptionTooLong);
+
+        // Verify caller is governance
+        require!(
+            ctx.accounts.governance.key() == ctx.accounts.admin.key(),
+            ErrorCode::UnauthorizedAdmin
+        );
+
+        let oracle_registry = &mut ctx.accounts.oracle_registry;
+        require!(oracle_registry.collateral > 0, ErrorCode::OracleNotRegistered);
+
+        // Can only recover up to original reputation of 100
+        let reputation_recovery = 15u32.min(100u32.saturating_sub(oracle_registry.reputation_score));
+
+        oracle_registry.reputation_score = oracle_registry.reputation_score.saturating_add(reputation_recovery);
+
+        // Emit recovery event
+        emit!(OracleReputationRecovered {
+            oracle_pubkey: oracle_registry.oracle_pubkey,
+            reputation_restored: reputation_recovery,
+            recovered_at: current_time,
+        });
+
+        Ok(())
+    }
 }
 
 // Account Structures
@@ -1069,6 +1182,22 @@ pub struct MilestoneVerified {
     pub verified_at: u64,
 }
 
+#[event]
+pub struct OracleSlashed {
+    pub oracle_pubkey: Pubkey,
+    pub collateral_slashed: u64,
+    pub reputation_penalty: u32,
+    pub reason: String,
+    pub slashed_at: u64,
+}
+
+#[event]
+pub struct OracleReputationRecovered {
+    pub oracle_pubkey: Pubkey,
+    pub reputation_restored: u32,
+    pub recovered_at: u64,
+}
+
 // Error Codes
 
 #[error_code]
@@ -1139,6 +1268,12 @@ pub enum ErrorCode {
     InsufficientVoteApproval,
     #[msg("Invalid funding amount (must be > 0)")]
     InvalidFundingAmount,
+    #[msg("Insufficient evidence to slash oracle")]
+    InsufficientSlashingEvidence,
+    #[msg("Oracle collateral insufficient for slashing")]
+    InsufficientOracleCollateral,
+    #[msg("Oracle is not registered")]
+    OracleNotRegistered,
 }
 
 // Account Contexts for Oracle Operations
@@ -1312,5 +1447,49 @@ pub struct ExecuteTrancheRelease<'info> {
     pub executor: Signer<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+}
+
+// Week 4: Oracle Slashing Contexts
+
+#[derive(Accounts)]
+#[instruction(oracle_pubkey: Pubkey)]
+pub struct SlashOracleContext<'info> {
+    #[account(
+        mut,
+        seeds = [b"oracle", oracle_pubkey.as_ref()],
+        bump
+    )]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+
+    #[account(mut)]
+    pub oracle_collateral_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub governance_treasury: Account<'info, TokenAccount>,
+
+    /// CHECK: Governance address (in production, would be DAO treasury)
+    pub governance: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(oracle_pubkey: Pubkey)]
+pub struct RecoverOracleReputationContext<'info> {
+    #[account(
+        mut,
+        seeds = [b"oracle", oracle_pubkey.as_ref()],
+        bump
+    )]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+
+    /// CHECK: Governance address (in production, would be DAO treasury)
+    pub governance: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub admin: Signer<'info>,
 }
 
