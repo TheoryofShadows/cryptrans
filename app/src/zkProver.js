@@ -109,17 +109,17 @@ export async function generateSecretFromWallet(wallet) {
  */
 export async function generateVoteProof({ secret, stakeAmount, proposalId, minStake }) {
   console.log('⚡ Generating zero-knowledge proof...');
-  
+
   // Check if ZK system is initialized
   if (!wasmBuffer || !zkeyBuffer) {
     console.log('ZK system not initialized, initializing now...');
     await initZK();
   }
-  
+
   // Calculate nullifier and commitment
   const nullifier = generateNullifier(secret, proposalId);
   const commitment = generateCommitment(secret);
-  
+
   // Prepare circuit inputs
   const inputs = {
     secret: secret.toString(),
@@ -130,13 +130,13 @@ export async function generateVoteProof({ secret, stakeAmount, proposalId, minSt
     minStake: minStake.toString(),
     root: '0', // Merkle root (not implemented yet)
   };
-  
+
   console.log('Circuit inputs:', {
     ...inputs,
     secret: '[HIDDEN]',
     stakeAmount: '[HIDDEN]',
   });
-  
+
   try {
     // Generate proof using snarkjs
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -144,29 +144,62 @@ export async function generateVoteProof({ secret, stakeAmount, proposalId, minSt
       new Uint8Array(wasmBuffer),
       new Uint8Array(zkeyBuffer)
     );
-    
+
     console.log('✅ Proof generated successfully!');
-    
+
+    // Convert proof elements to byte arrays for Solana
+    const proofA = proof.pi_a.slice(0, 2); // [x, y]
+    const proofB = proof.pi_b.slice(0, 2); // [[x1, x2], [y1, y2]]
+    const proofC = proof.pi_c.slice(0, 2); // [x, y]
+
+    // Convert BN values to bytes (32 bytes per field element)
+    const proofABytes = new Uint8Array(64);
+    const proofBBytes = new Uint8Array(128);
+    const proofCBytes = new Uint8Array(64);
+
+    // Pack proof elements (simplified - in production use proper BN254 encoding)
+    for (let i = 0; i < 2; i++) {
+      const aBN = proofA[i].toString(16).padStart(64, '0');
+      for (let j = 0; j < 32; j++) {
+        proofABytes[i * 32 + j] = parseInt(aBN.substr(j * 2, 2), 16);
+      }
+    }
+
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        const bBN = proofB[i][j].toString(16).padStart(64, '0');
+        for (let k = 0; k < 32; k++) {
+          proofBBytes[(i * 2 + j) * 32 + k] = parseInt(bBN.substr(k * 2, 2), 16);
+        }
+      }
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const cBN = proofC[i].toString(16).padStart(64, '0');
+      for (let j = 0; j < 32; j++) {
+        proofCBytes[i * 32 + j] = parseInt(cBN.substr(j * 2, 2), 16);
+      }
+    }
+
     // Convert to format expected by Solana program
     return {
       proof: {
-        pi_a: proof.pi_a.slice(0, 2),
-        pi_b: proof.pi_b.slice(0, 2),
-        pi_c: proof.pi_c.slice(0, 2),
+        pi_a: proofA,
+        pi_b: proofB,
+        pi_c: proofC,
       },
       publicSignals: {
-        nullifier,
-        commitment,
+        nullifier: publicSignals[0], // First public signal is nullifier
+        commitment: publicSignals[1], // Second is commitment
         minStake: minStake.toString(),
       },
       // For Solana (convert to bytes)
       proofBytes: {
-        a: Buffer.from(JSON.stringify(proof.pi_a)),
-        b: Buffer.from(JSON.stringify(proof.pi_b)),
-        c: Buffer.from(JSON.stringify(proof.pi_c)),
-      }
+        a: proofABytes,
+        b: proofBBytes,
+        c: proofCBytes,
+      },
     };
-    
   } catch (error) {
     console.error('❌ Proof generation failed:', error);
     throw error;
