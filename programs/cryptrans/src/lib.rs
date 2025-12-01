@@ -7,9 +7,8 @@ mod groth16_verifier;
 mod oracle;
 mod tranche;
 
-use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, RejectedProposal};
+use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation};
 use tranche::{
-    ProjectStatus, TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType, TranhumanProject,
     TrancheReleased, TrancheReleaseProposed, ProjectCompleted,
 };
 
@@ -337,6 +336,153 @@ pub mod cryptrans {
 
         Ok(())
     }
+
+    /// Register an oracle and lock collateral
+    pub fn register_oracle(
+        ctx: Context<RegisterOracleContext>,
+        oracle_name: String,
+        collateral_amount: u64,
+    ) -> Result<()> {
+        require!(oracle_name.len() <= 64, ErrorCode::OracleNameTooLong);
+        require!(collateral_amount > 0, ErrorCode::InvalidCollateralAmount);
+
+        // Transfer collateral from oracle to oracle account
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.oracle_token_account.to_account_info(),
+            to: ctx.accounts.oracle_collateral_account.to_account_info(),
+            authority: ctx.accounts.oracle.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, collateral_amount)?;
+
+        // Initialize oracle registry
+        let oracle_registry = &mut ctx.accounts.oracle_registry;
+        oracle_registry.oracle_pubkey = ctx.accounts.oracle.key();
+        oracle_registry.name = oracle_name;
+        oracle_registry.collateral = collateral_amount;
+        oracle_registry.reputation_score = 100;  // Start at max reputation
+        oracle_registry.total_attestations = 0;
+        oracle_registry.successful_attestations = 0;
+        oracle_registry.failed_attestations = 0;
+        oracle_registry.last_attested = None;
+
+        emit!(OracleRegistered {
+            oracle_pubkey: ctx.accounts.oracle.key(),
+            name: oracle_registry.name.clone(),
+            collateral: collateral_amount,
+        });
+
+        Ok(())
+    }
+
+    /// Submit alignment score for a proposal (requires oracle)
+    pub fn submit_alignment_score(
+        ctx: Context<SubmitAlignmentScore>,
+        proposal_id: u64,
+        alignment_score: u8,
+        reasoning: String,
+    ) -> Result<()> {
+        require!(alignment_score <= 100, ErrorCode::InvalidAlignmentScore);
+        require!(reasoning.len() <= 500, ErrorCode::ReasoningTooLong);
+
+        // Verify caller is registered oracle
+        let oracle_registry = &ctx.accounts.oracle_registry;
+        require!(
+            oracle_registry.oracle_pubkey == ctx.accounts.oracle.key(),
+            ErrorCode::UnauthorizedOracle
+        );
+
+        // Create alignment score record
+        let alignment_score_account = &mut ctx.accounts.alignment_score;
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        alignment_score_account.proposal_id = proposal_id;
+        alignment_score_account.raw_score = alignment_score;
+        alignment_score_account.oracle_pubkey = ctx.accounts.oracle.key();
+        alignment_score_account.reasoning = reasoning;
+        alignment_score_account.scored_at = current_time;
+        alignment_score_account.alignment_tier = AlignmentTier::from_score(alignment_score);
+
+        emit!(AlignmentScoreSubmitted {
+            proposal_id,
+            alignment_score,
+            oracle_pubkey: ctx.accounts.oracle.key(),
+            alignment_tier: alignment_score_account.alignment_tier.clone(),
+        });
+
+        Ok(())
+    }
+
+    /// Submit milestone attestation from oracle
+    pub fn submit_milestone_attestation(
+        ctx: Context<SubmitMilestoneAttestation>,
+        milestone_id: u64,
+        confidence_score: u8,
+        signed_data: [u8; 128],
+    ) -> Result<()> {
+        require!(confidence_score <= 100, ErrorCode::InvalidConfidenceScore);
+
+        // Verify caller is registered oracle
+        let oracle_registry = &ctx.accounts.oracle_registry;
+        require!(
+            oracle_registry.oracle_pubkey == ctx.accounts.oracle.key(),
+            ErrorCode::UnauthorizedOracle
+        );
+
+        // Update milestone with attestation
+        let milestone = &mut ctx.accounts.milestone;
+        require!(milestone.id == milestone_id, ErrorCode::MilestoneIdMismatch);
+
+        let attestation = OracleAttestation {
+            oracle_pubkey: ctx.accounts.oracle.key(),
+            attestation_time: Clock::get()?.unix_timestamp as u64,
+            confidence_score,
+            signed_data,
+            slashing_risk: false,
+        };
+
+        milestone.attestations.push(attestation);
+
+        // Update oracle registry attestation count
+        let oracle_registry = &mut ctx.accounts.oracle_registry;
+        oracle_registry.total_attestations = oracle_registry.total_attestations.checked_add(1).unwrap();
+        oracle_registry.last_attested = Some(Clock::get()?.unix_timestamp as u64);
+
+        emit!(MilestoneAttestationSubmitted {
+            milestone_id,
+            oracle_pubkey: ctx.accounts.oracle.key(),
+            confidence_score,
+            attestation_count: milestone.attestations.len() as u8,
+        });
+
+        Ok(())
+    }
+
+    /// Verify milestone has achieved quorum
+    pub fn verify_milestone(ctx: Context<VerifyMilestone>) -> Result<()> {
+        let milestone = &mut ctx.accounts.milestone;
+
+        // Use helper function from oracle module
+        let required_quorum = milestone.required_attestations;
+        let min_confidence = 70; // 70% minimum confidence threshold
+
+        require!(
+            oracle::verify_milestone_with_quorum(milestone, required_quorum, min_confidence),
+            ErrorCode::MilestoneNotVerified
+        );
+
+        milestone.verified_at = Some(Clock::get()?.unix_timestamp as u64);
+
+        emit!(MilestoneVerified {
+            milestone_id: milestone.id,
+            tranche_id: milestone.tranche_id,
+            attestation_count: milestone.attestations.len() as u8,
+            verified_at: milestone.verified_at.unwrap(),
+        });
+
+        Ok(())
+    }
 }
 
 // Account Structures
@@ -581,6 +727,37 @@ pub struct VoteEvent {
     pub timestamp: u64,
 }
 
+#[event]
+pub struct OracleRegistered {
+    pub oracle_pubkey: Pubkey,
+    pub name: String,
+    pub collateral: u64,
+}
+
+#[event]
+pub struct AlignmentScoreSubmitted {
+    pub proposal_id: u64,
+    pub alignment_score: u8,
+    pub oracle_pubkey: Pubkey,
+    pub alignment_tier: AlignmentTier,
+}
+
+#[event]
+pub struct MilestoneAttestationSubmitted {
+    pub milestone_id: u64,
+    pub oracle_pubkey: Pubkey,
+    pub confidence_score: u8,
+    pub attestation_count: u8,
+}
+
+#[event]
+pub struct MilestoneVerified {
+    pub milestone_id: u64,
+    pub tranche_id: u64,
+    pub attestation_count: u8,
+    pub verified_at: u64,
+}
+
 // Error Codes
 
 #[error_code]
@@ -611,5 +788,84 @@ pub enum ErrorCode {
     InsufficientStake,
     #[msg("Unauthorized - only admin can perform this action")]
     UnauthorizedAdmin,
+    #[msg("Oracle name exceeds maximum length")]
+    OracleNameTooLong,
+    #[msg("Invalid collateral amount (must be > 0)")]
+    InvalidCollateralAmount,
+    #[msg("Invalid alignment score (must be 0-100)")]
+    InvalidAlignmentScore,
+    #[msg("Reasoning exceeds maximum length")]
+    ReasoningTooLong,
+    #[msg("Caller is not a registered oracle")]
+    UnauthorizedOracle,
+    #[msg("Invalid confidence score (must be 0-100)")]
+    InvalidConfidenceScore,
+    #[msg("Milestone ID does not match")]
+    MilestoneIdMismatch,
+    #[msg("Milestone has not been verified")]
+    MilestoneNotVerified,
+}
+
+// Account Contexts for Oracle Operations
+
+#[derive(Accounts)]
+pub struct RegisterOracleContext<'info> {
+    #[account(
+        init,
+        payer = oracle,
+        space = 8 + 32 + 4 + 64 + 8 + 4 + 8 + 8 + 8 + 8,
+        seeds = [b"oracle", oracle.key().as_ref()],
+        bump
+    )]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+    #[account(mut)]
+    pub oracle: Signer<'info>,
+    #[account(mut)]
+    pub oracle_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub oracle_collateral_account: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(proposal_id: u64)]
+pub struct SubmitAlignmentScore<'info> {
+    #[account(
+        init,
+        payer = oracle,
+        space = 8 + 8 + 1 + 32 + 4 + 500 + 8 + 1,
+        seeds = [b"alignment_score", proposal_id.to_le_bytes().as_ref(), oracle.key().as_ref()],
+        bump
+    )]
+    pub alignment_score: Account<'info, AlignmentScore>,
+    #[account(
+        seeds = [b"oracle", oracle.key().as_ref()],
+        bump
+    )]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+    #[account(mut)]
+    pub oracle: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(milestone_id: u64)]
+pub struct SubmitMilestoneAttestation<'info> {
+    #[account(mut)]
+    pub milestone: Account<'info, Milestone>,
+    #[account(
+        mut,
+        seeds = [b"oracle", oracle.key().as_ref()],
+        bump
+    )]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+    pub oracle: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct VerifyMilestone<'info> {
+    #[account(mut)]
+    pub milestone: Account<'info, Milestone>,
 }
 
