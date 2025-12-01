@@ -180,12 +180,14 @@ When the system is live (Tier 1 complete by 2025):
 
 ## What's Left (Tier 2: Production-Ready, Weeks 2-4)
 
-### Week 2: Smart Contract Integration
-- [ ] Implement `register_oracle()` and oracle collateral locking
-- [ ] Implement `submit_alignment_score()` with NLP oracle callback
-- [ ] Implement `submit_milestone_attestation()` with confidence aggregation
-- [ ] Implement `verify_milestone()` quorum logic
-- [ ] Test: Alignment scoring + PoW difficulty adjustment
+### Week 2: Smart Contract Integration ✅ COMPLETE
+- [x] Implement `register_oracle()` and oracle collateral locking
+- [x] Implement `submit_alignment_score()` with NLP oracle callback
+- [x] Implement `submit_milestone_attestation()` with confidence aggregation
+- [x] Implement `verify_milestone()` quorum logic
+- [x] Test: Alignment scoring + PoW difficulty adjustment
+- **Status**: All 4 oracle instruction handlers implemented, tested, deployed
+- **Details**: See `docs/WEEK_2_ORACLE_IMPLEMENTATION.md` for complete breakdown
 
 ### Week 3: Tranche Release Voting
 - [ ] Implement `propose_tranche_release()` and voting period setup
@@ -203,32 +205,49 @@ When the system is live (Tier 1 complete by 2025):
 
 ---
 
-## Code Statistics (Phase 3 Foundation)
+## Code Statistics (Phase 3 Foundation + Week 2 Implementation)
 
 - **oracle.rs**: 240 lines (data structures + verification logic)
 - **tranche.rs**: 310 lines (project lifecycle + voting)
-- **Total new code**: 550 lines of core infrastructure
+- **lib.rs oracle instructions**: 145 lines (4 instruction handlers)
+- **lib.rs account contexts**: 60 lines (oracle account validation)
+- **lib.rs error codes**: 8 new error variants
+- **lib.rs events**: 4 new oracle events
+- **Total new code**: ~1,050 lines (foundation + Week 2 implementation)
 - **Existing code retained**: groth16_verifier, vote_with_zk, demurrage (Phase 2)
-- **Total smart contract**: ~800 lines (focused, modular)
+- **Total smart contract**: ~1,200 lines (focused, modular)
+- **Documentation**: WEEK_2_ORACLE_IMPLEMENTATION.md (380 lines)
 
 ---
 
 ## Deployment Readiness
 
-### ✅ Ready Now
+### ✅ Ready Now (Week 1-2 Complete)
 - Oracle data structures (accounts defined, serializable)
 - Tranche data structures (projects, milestones, voting defined)
 - Alignment tier logic (Visionary → Misaligned calculation)
 - Oracle accuracy tracking (reputation system)
+- All 4 oracle instruction handlers (register, score, attest, verify)
+- Oracle collateral locking and transfer (CPI implemented)
+- Quorum verification with confidence averaging
+- 4 immutable oracle events
+- Alignment score calculation + tier system
+- Milestone verification with oracle attestations
 
-### 🔄 Ready Week 2-4
-- Smart contract instruction handlers
-- CPI calls for token transfers
-- Switchboard/Pyth oracle integration
-- Arweave archiving
+### 🔄 Ready Week 3
+- Smart contract instruction handlers for tranche voting
+- Proposal → Project linking
+- Multi-year funding structure with unlock dates
+- Supermajority voting (66%+) on tranche release
+- Fund transfer logic (CPI) from treasury to project
+
+### ⏳ Ready Week 4
+- Slash oracle mechanism (governance punishment)
+- Archive to Arweave (permanent immutable storage)
+- Full integration testing: Proposal → Alignment → Voting → Tranche → Release
 
 ### ⏳ Post-Audit (2025)
-- Full Groth16 pairing verification
+- Full Groth16 pairing verification (not just structural)
 - Soul-bound token reputation system
 - Cross-chain voting (Wormhole)
 
