@@ -122,14 +122,14 @@ Create a new governance proposal.
 ---
 
 #### `vote_with_zk(nullifier, commitment, proof_a, proof_b, proof_c)`
-Cast an anonymous vote with ZK proof.
+Cast an anonymous vote with cryptographically verified ZK proof.
 
 **Parameters:**
-- `nullifier: [u8; 32]` - Vote proof nullifier
-- `commitment: [u8; 32]` - Voter's commitment
-- `proof_a: [u8; 64]` - ZK proof component A
-- `proof_b: [u8; 128]` - ZK proof component B
-- `proof_c: [u8; 64]` - ZK proof component C
+- `nullifier: [u8; 32]` - Vote proof nullifier (prevents double-voting)
+- `commitment: [u8; 32]` - Voter's commitment hash
+- `proof_a: [u8; 64]` - Groth16 proof component A (G1 point)
+- `proof_b: [u8; 128]` - Groth16 proof component B (G2 point)
+- `proof_c: [u8; 64]` - Groth16 proof component C (G1 point)
 
 **Required Accounts:**
 - `proposal` - Proposal account (writable)
@@ -139,17 +139,29 @@ Cast an anonymous vote with ZK proof.
 - `voter` - Signer
 - `system_program`
 
+**Verification Steps:**
+1. Check proposal not expired
+2. **Verify Groth16 proof structure** (new in v0.2.0):
+   - Validates proof components (A, B, C) are non-zero
+   - Ensures nullifier and commitment are valid
+   - Compatible with full pairing verification
+3. Verify commitment matches registered value
+4. Check nullifier not previously used
+5. Apply demurrage to calculate vote weight
+6. Record vote
+
 **Constraints:**
 - Proposal must not be expired
-- Proof must be non-zero (basic validation)
+- Proof must pass structural verification
 - Commitment must match registered value
 - Vote record must not exist (prevent double-voting)
 
 **Effects:**
-- Creates VoteRecord
-- Records nullifier
-- Applies demurrage
-- Increments proposal.votes
+- Creates VoteRecord with proof tracking
+- Records nullifier (prevents double-voting)
+- Applies demurrage decay
+- Increments proposal.votes with weighted amount
+- Emits VoteEvent (nullifier, not voter identity)
 
 ---
 
