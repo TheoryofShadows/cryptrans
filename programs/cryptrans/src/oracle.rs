@@ -137,6 +137,51 @@ impl OracleRegistry {
     }
 }
 
+/// Soul-bound token reputation badge (non-transferable proof of oracle accuracy)
+/// Minted to oracle's wallet, burns when oracle is slashed
+#[account]
+pub struct OracleReputationToken {
+    pub oracle_pubkey: Pubkey,
+    pub mint_address: Pubkey,
+    pub accuracy_tier: AccuracyTier,  // Bronze, Silver, Gold, Platinum
+    pub successful_attestations: u64,
+    pub reputation_score: u32,
+    pub minted_at: u64,
+    pub last_updated: u64,
+    pub is_active: bool,
+}
+
+#[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize, PartialEq, Eq)]
+pub enum AccuracyTier {
+    None,      // 0-49 accuracy - no token
+    Bronze,    // 50-69 accuracy - basic oracle
+    Silver,    // 70-84 accuracy - trusted oracle
+    Gold,      // 85-94 accuracy - expert oracle
+    Platinum,  // 95-100 accuracy - master oracle
+}
+
+impl AccuracyTier {
+    pub fn from_accuracy_rate(rate: u8) -> Self {
+        match rate {
+            95..=100 => AccuracyTier::Platinum,
+            85..=94 => AccuracyTier::Gold,
+            70..=84 => AccuracyTier::Silver,
+            50..=69 => AccuracyTier::Bronze,
+            _ => AccuracyTier::None,
+        }
+    }
+
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            AccuracyTier::None => "None",
+            AccuracyTier::Bronze => "Bronze",
+            AccuracyTier::Silver => "Silver",
+            AccuracyTier::Gold => "Gold",
+            AccuracyTier::Platinum => "Platinum",
+        }
+    }
+}
+
 /// Helper function to verify multiple oracle attestations
 pub fn verify_milestone_with_quorum(
     milestone: &Milestone,

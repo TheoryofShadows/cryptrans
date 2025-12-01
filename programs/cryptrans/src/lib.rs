@@ -7,7 +7,7 @@ mod groth16_verifier;
 mod oracle;
 mod tranche;
 
-use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType};
+use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType, AccuracyTier, OracleReputationToken};
 use tranche::{
     ProjectProposed, TrancheReleased, TrancheReleaseProposed, ProjectCompleted, TranhumanProject, Tranche,
     TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType,
@@ -908,6 +908,111 @@ pub mod cryptrans {
         Ok(())
     }
 
+    /// Mint soul-bound reputation token for oracle (Week 4)
+    /// Non-transferable proof of oracle accuracy - survives on-chain forever
+    pub fn mint_reputation_token(
+        ctx: Context<MintReputationTokenContext>,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Get oracle registry
+        let oracle_registry = &ctx.accounts.oracle_registry;
+        let oracle_pubkey = oracle_registry.oracle_pubkey;
+        let accuracy_rate = oracle_registry.accuracy_rate();
+        let accuracy_tier = AccuracyTier::from_accuracy_rate(accuracy_rate);
+
+        // Only mint if oracle has 50%+ accuracy
+        require!(
+            accuracy_tier != AccuracyTier::None,
+            ErrorCode::InsufficientVoteApproval
+        );
+
+        // Create reputation token record
+        let rep_token = &mut ctx.accounts.reputation_token;
+        rep_token.oracle_pubkey = oracle_pubkey;
+        rep_token.mint_address = oracle_pubkey;  // Reference to oracle's identity
+        rep_token.accuracy_tier = accuracy_tier.clone();
+        rep_token.successful_attestations = oracle_registry.successful_attestations;
+        rep_token.reputation_score = oracle_registry.reputation_score;
+        rep_token.minted_at = current_time;
+        rep_token.last_updated = current_time;
+        rep_token.is_active = true;
+
+        // Emit token minting event
+        emit!(ReputationTokenMinted {
+            oracle_pubkey,
+            accuracy_tier: accuracy_tier.to_string().to_string(),
+            accuracy_rate,
+            minted_at: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Update reputation token when oracle accuracy improves
+    /// Allows tier upgrades without burning and reminting
+    pub fn update_reputation_token(
+        ctx: Context<UpdateReputationTokenContext>,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        let oracle_registry = &ctx.accounts.oracle_registry;
+        let accuracy_rate = oracle_registry.accuracy_rate();
+        let new_tier = AccuracyTier::from_accuracy_rate(accuracy_rate);
+
+        let rep_token = &mut ctx.accounts.reputation_token;
+
+        // Check if tier changed
+        let tier_changed = rep_token.accuracy_tier != new_tier;
+
+        // Update token data
+        rep_token.accuracy_tier = new_tier.clone();
+        rep_token.successful_attestations = oracle_registry.successful_attestations;
+        rep_token.reputation_score = oracle_registry.reputation_score;
+        rep_token.last_updated = current_time;
+
+        // If accuracy dropped below 50%, deactivate token
+        if new_tier == AccuracyTier::None {
+            rep_token.is_active = false;
+        }
+
+        // Emit update event
+        emit!(ReputationTokenUpdated {
+            oracle_pubkey: oracle_registry.oracle_pubkey,
+            old_tier: rep_token.accuracy_tier.to_string().to_string(),
+            new_tier: new_tier.to_string().to_string(),
+            accuracy_rate,
+            updated_at: current_time,
+            tier_changed,
+        });
+
+        Ok(())
+    }
+
+    /// Burn reputation token when oracle is slashed below 50% accuracy
+    /// Irreversible mark of dishonesty in the immutable ledger
+    pub fn burn_reputation_token(
+        ctx: Context<BurnReputationTokenContext>,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        let rep_token = &mut ctx.accounts.reputation_token;
+
+        require!(rep_token.is_active, ErrorCode::InsufficientVoteApproval);
+
+        // Mark as burned (inactive forever)
+        rep_token.is_active = false;
+
+        // Emit burn event
+        emit!(ReputationTokenBurned {
+            oracle_pubkey: rep_token.oracle_pubkey,
+            previous_tier: rep_token.accuracy_tier.to_string().to_string(),
+            burned_at: current_time,
+        });
+
+        Ok(())
+    }
+
     /// Archive a tranche release record to Arweave for permanent immutable storage (Week 4)
     /// Creates permanent record of funding decision that survives any blockchain fork
     /// Returns Arweave transaction hash for verification
@@ -1285,6 +1390,31 @@ pub struct MilestoneArchivedToArweave {
     pub archived_at: u64,
 }
 
+#[event]
+pub struct ReputationTokenMinted {
+    pub oracle_pubkey: Pubkey,
+    pub accuracy_tier: String,
+    pub accuracy_rate: u8,
+    pub minted_at: u64,
+}
+
+#[event]
+pub struct ReputationTokenUpdated {
+    pub oracle_pubkey: Pubkey,
+    pub old_tier: String,
+    pub new_tier: String,
+    pub accuracy_rate: u8,
+    pub updated_at: u64,
+    pub tier_changed: bool,
+}
+
+#[event]
+pub struct ReputationTokenBurned {
+    pub oracle_pubkey: Pubkey,
+    pub previous_tier: String,
+    pub burned_at: u64,
+}
+
 // Error Codes
 
 #[error_code]
@@ -1578,6 +1708,57 @@ pub struct RecoverOracleReputationContext<'info> {
 
     #[account(mut)]
     pub admin: Signer<'info>,
+}
+
+// Week 4: Soul-Bound Reputation Token Contexts
+
+#[derive(Accounts)]
+pub struct MintReputationTokenContext<'info> {
+    #[account(mut)]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+
+    #[account(
+        init,
+        payer = minter,
+        space = 8 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 1,
+        seeds = [b"rep_token", oracle_registry.oracle_pubkey.as_ref()],
+        bump
+    )]
+    pub reputation_token: Account<'info, oracle::OracleReputationToken>,
+
+    #[account(mut)]
+    pub minter: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateReputationTokenContext<'info> {
+    #[account(mut)]
+    pub oracle_registry: Account<'info, oracle::OracleRegistry>,
+
+    #[account(
+        mut,
+        seeds = [b"rep_token", oracle_registry.oracle_pubkey.as_ref()],
+        bump
+    )]
+    pub reputation_token: Account<'info, oracle::OracleReputationToken>,
+
+    #[account(mut)]
+    pub updater: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct BurnReputationTokenContext<'info> {
+    #[account(
+        mut,
+        seeds = [b"rep_token", reputation_token.oracle_pubkey.as_ref()],
+        bump
+    )]
+    pub reputation_token: Account<'info, oracle::OracleReputationToken>,
+
+    #[account(mut)]
+    pub burner: Signer<'info>,
 }
 
 // Week 4: Arweave Archive Contexts
