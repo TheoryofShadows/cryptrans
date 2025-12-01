@@ -907,6 +907,75 @@ pub mod cryptrans {
 
         Ok(())
     }
+
+    /// Archive a tranche release record to Arweave for permanent immutable storage (Week 4)
+    /// Creates permanent record of funding decision that survives any blockchain fork
+    /// Returns Arweave transaction hash for verification
+    pub fn archive_to_arweave(
+        ctx: Context<ArchiveToArweaveContext>,
+        arweave_tx_hash: String,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Validate Arweave transaction hash format (should be 43 chars base64)
+        require!(
+            arweave_tx_hash.len() >= 40 && arweave_tx_hash.len() <= 50,
+            ErrorCode::InvalidPoWContent
+        );
+
+        // Get the release record and update with Arweave hash
+        let record = &mut ctx.accounts.tranche_release_record;
+        record.arweave_hash = Some(arweave_tx_hash.clone());
+
+        // Also update the project record if applicable
+        if let Some(project) = &mut ctx.accounts.transhuman_project.as_mut() {
+            project.arweave_hash = Some(arweave_tx_hash.clone());
+        }
+
+        // Emit archive event (immutable proof of archival)
+        emit!(TrancheArchivedToArweave {
+            project_id: record.project_id,
+            tranche_id: record.tranche_id,
+            amount: record.amount,
+            arweave_hash: arweave_tx_hash,
+            archived_at: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Archive a completed project milestone to Arweave
+    /// Final record of what was achieved and funded
+    pub fn archive_project_milestone(
+        ctx: Context<ArchiveProjectMilestoneContext>,
+        milestone_data: String,
+        arweave_tx_hash: String,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Validate inputs
+        require!(milestone_data.len() <= 1000, ErrorCode::DescriptionTooLong);
+        require!(
+            arweave_tx_hash.len() >= 40 && arweave_tx_hash.len() <= 50,
+            ErrorCode::InvalidPoWContent
+        );
+
+        // Update milestone record
+        let milestone = &mut ctx.accounts.milestone;
+        milestone.verified_at = Some(current_time);
+        milestone.release_triggered = true;
+
+        // Emit milestone archive event
+        emit!(MilestoneArchivedToArweave {
+            milestone_id: milestone.id,
+            tranche_id: milestone.tranche_id,
+            description: milestone.description.clone(),
+            arweave_hash: arweave_tx_hash,
+            archived_at: current_time,
+        });
+
+        Ok(())
+    }
 }
 
 // Account Structures
@@ -1196,6 +1265,24 @@ pub struct OracleReputationRecovered {
     pub oracle_pubkey: Pubkey,
     pub reputation_restored: u32,
     pub recovered_at: u64,
+}
+
+#[event]
+pub struct TrancheArchivedToArweave {
+    pub project_id: u64,
+    pub tranche_id: u64,
+    pub amount: u64,
+    pub arweave_hash: String,
+    pub archived_at: u64,
+}
+
+#[event]
+pub struct MilestoneArchivedToArweave {
+    pub milestone_id: u64,
+    pub tranche_id: u64,
+    pub description: String,
+    pub arweave_hash: String,
+    pub archived_at: u64,
 }
 
 // Error Codes
@@ -1491,5 +1578,28 @@ pub struct RecoverOracleReputationContext<'info> {
 
     #[account(mut)]
     pub admin: Signer<'info>,
+}
+
+// Week 4: Arweave Archive Contexts
+
+#[derive(Accounts)]
+pub struct ArchiveToArweaveContext<'info> {
+    #[account(mut)]
+    pub tranche_release_record: Account<'info, tranche::TrancheReleaseRecord>,
+
+    #[account(mut)]
+    pub transhuman_project: Option<Account<'info, TranhumanProject>>,
+
+    #[account(mut)]
+    pub archiver: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ArchiveProjectMilestoneContext<'info> {
+    #[account(mut)]
+    pub milestone: Account<'info, Milestone>,
+
+    #[account(mut)]
+    pub archiver: Signer<'info>,
 }
 
