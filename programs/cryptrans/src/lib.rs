@@ -4,6 +4,14 @@ use anchor_spl::associated_token::AssociatedToken;
 use sha2::{Sha256, Digest};
 
 mod groth16_verifier;
+mod oracle;
+mod tranche;
+
+use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, RejectedProposal};
+use tranche::{
+    ProjectStatus, TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType, TranhumanProject,
+    TrancheReleased, TrancheReleaseProposed, ProjectCompleted,
+};
 
 declare_id!("B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK");
 
