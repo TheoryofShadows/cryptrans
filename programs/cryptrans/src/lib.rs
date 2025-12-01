@@ -7,12 +7,24 @@ mod groth16_verifier;
 mod oracle;
 mod tranche;
 
-use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation};
+use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType};
 use tranche::{
-    TrancheReleased, TrancheReleaseProposed, ProjectCompleted,
+    ProjectProposed, TrancheReleased, TrancheReleaseProposed, ProjectCompleted, TranhumanProject, Tranche,
+    TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType,
 };
 
 declare_id!("B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK");
+
+/// Helper struct for creating tranches in propose_transhuman_project
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct TrancheInput {
+    pub sequence: u8,
+    pub funding_amount: u64,
+    pub unlock_date: u64,
+    pub milestone_description: String,
+    pub verification_type: MilestoneVerificationType,
+    pub required_attestations: u8,
+}
 
 #[program]
 pub mod cryptrans {
@@ -483,6 +495,305 @@ pub mod cryptrans {
 
         Ok(())
     }
+
+    /// Create a multi-year transhuman project with multiple funding tranches
+    pub fn propose_transhuman_project(
+        ctx: Context<ProposeTranhumanProject>,
+        project_name: String,
+        project_description: String,
+        tranches: Vec<TrancheInput>,
+    ) -> Result<()> {
+        // Validate inputs
+        require!(project_name.len() > 0 && project_name.len() <= 128, ErrorCode::ProjectNameTooLong);
+        require!(project_description.len() <= 1000, ErrorCode::ProjectDescriptionTooLong);
+        require!(tranches.len() >= 1 && tranches.len() <= 10, ErrorCode::InvalidTrancheCount);
+
+        // Validate tranche sequence and unlock dates
+        let mut last_unlock_date = 0u64;
+        for (i, tranche) in tranches.iter().enumerate() {
+            require!(tranche.sequence == (i as u8 + 1), ErrorCode::InvalidTrancheSequence);
+            require!(tranche.funding_amount > 0, ErrorCode::InvalidFundingAmount);
+            require!(tranche.unlock_date >= last_unlock_date, ErrorCode::InvalidUnlockDates);
+            last_unlock_date = tranche.unlock_date;
+        }
+
+        // Calculate total funding needed
+        let total_funding_needed: u64 = tranches.iter().map(|t| t.funding_amount).sum();
+
+        // Create tranche accounts from inputs
+        let mut tranche_accounts = Vec::new();
+        let current_time = Clock::get()?.unix_timestamp as u64;
+        let project_key = ctx.accounts.transhuman_project.key();
+        let project_id = project_key.as_ref()[0] as u64;
+
+        for tranche_input in tranches.iter() {
+            let tranche = Tranche {
+                id: project_id * 1000 + tranche_input.sequence as u64,
+                sequence: tranche_input.sequence,
+                funding_amount: tranche_input.funding_amount,
+                unlock_date: tranche_input.unlock_date,
+                milestone_id: project_id * 1000 + tranche_input.sequence as u64,
+                released: false,
+                released_at: None,
+                recipient: ctx.accounts.creator.key(),
+            };
+            tranche_accounts.push(tranche);
+        }
+
+        // Initialize TranhumanProject account
+        let project = &mut ctx.accounts.transhuman_project;
+        project.id = project_id;
+        project.name = project_name;
+        project.description = project_description;
+        project.creator = ctx.accounts.creator.key();
+        project.total_funding_needed = total_funding_needed;
+        project.treasury = ctx.accounts.treasury.key();
+        project.tranches = tranche_accounts;
+        project.status = tranche::ProjectStatus::Proposed;
+        project.approval_votes_required = 66;  // 66% supermajority
+        project.created_at = current_time;
+        project.completed_at = None;
+        project.arweave_hash = None;
+        project.immutable_record = true;
+
+        // Emit event
+        emit!(ProjectProposed {
+            project_id: project.id,
+            project_name: project.name.clone(),
+            creator: ctx.accounts.creator.key(),
+            total_funding: total_funding_needed,
+            tranches_count: tranches.len() as u8,
+            created_at: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Propose releasing a tranche (initiates voting)
+    pub fn propose_tranche_release(
+        ctx: Context<ProposeTrancheRelease>,
+        voting_period_seconds: u64,
+    ) -> Result<()> {
+        require!(voting_period_seconds >= 86400, ErrorCode::InvalidVotingPeriod);  // Min 1 day
+        require!(voting_period_seconds <= 2592000, ErrorCode::InvalidVotingPeriod);  // Max 30 days
+
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Check that milestone is verified
+        let milestone = &ctx.accounts.milestone;
+        require!(milestone.verified_at.is_some(), ErrorCode::MilestoneNotVerified);
+
+        // Check that tranche is not yet released
+        let project = &ctx.accounts.transhuman_project;
+        let tranche = project.tranches.iter()
+            .find(|t| t.sequence == ctx.accounts.milestone.tranche_id as u8)
+            .ok_or(ErrorCode::TrancheNotFound)?;
+
+        require!(!tranche.released, ErrorCode::TrancheAlreadyReleased);
+        require!(current_time >= tranche.unlock_date, ErrorCode::TrancheNotYetUnlocked);
+
+        // Create TrancheReleaseProposal
+        let proposal_key = ctx.accounts.tranche_proposal.key();
+        let proposal_id = proposal_key.as_ref()[0] as u64;
+        let proposal = &mut ctx.accounts.tranche_proposal;
+        proposal.id = proposal_id;
+        proposal.project_id = project.id;
+        proposal.tranche_id = milestone.tranche_id;
+        proposal.proposed_at = current_time;
+        proposal.voting_deadline = current_time + voting_period_seconds;
+        proposal.votes_yes = 0;
+        proposal.votes_no = 0;
+        proposal.votes_abstain = 0;
+        proposal.status = TrancheVoteStatus::Open;
+
+        emit!(TrancheReleaseProposed {
+            project_id: project.id,
+            tranche_id: milestone.tranche_id,
+            required_votes: 66,
+            voting_deadline: proposal.voting_deadline,
+        });
+
+        Ok(())
+    }
+
+    /// Vote on tranche release (YES/NO/ABSTAIN)
+    pub fn vote_on_tranche_release(
+        ctx: Context<VoteOnTrancheRelease>,
+        vote: TrancheVoteType,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Check voting is still open
+        let proposal = &ctx.accounts.tranche_proposal;
+        require!(current_time <= proposal.voting_deadline, ErrorCode::ProposalExpired);
+
+        // Check user hasn't already voted
+        let vote_record = &ctx.accounts.vote_record;
+        require!(!vote_record.has_voted, ErrorCode::AlreadyVoted);
+
+        // Get stake and apply demurrage
+        let stake = &ctx.accounts.stake;
+        let config = &ctx.accounts.config;
+        let mut adjusted_stake = stake.amount;
+
+        if current_time > stake.last_demurrage {
+            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
+            let decay = adjusted_stake
+                .checked_mul(config.demurrage_rate).unwrap()
+                .checked_mul(time_elapsed).unwrap()
+                .checked_div(365 * 24 * 3600 * 10000).unwrap();
+            adjusted_stake = adjusted_stake.saturating_sub(decay);
+        }
+
+        // Add vote to proposal
+        let proposal_mut = &mut ctx.accounts.tranche_proposal;
+        match vote {
+            TrancheVoteType::Yes => {
+                proposal_mut.votes_yes = proposal_mut.votes_yes.checked_add(adjusted_stake).unwrap();
+            }
+            TrancheVoteType::No => {
+                proposal_mut.votes_no = proposal_mut.votes_no.checked_add(adjusted_stake).unwrap();
+            }
+            TrancheVoteType::Abstain => {
+                proposal_mut.votes_abstain = proposal_mut.votes_abstain.checked_add(adjusted_stake).unwrap();
+            }
+        }
+
+        // Record vote
+        let vote_record_mut = &mut ctx.accounts.vote_record;
+        vote_record_mut.has_voted = true;
+        vote_record_mut.vote_weight = adjusted_stake;
+        vote_record_mut.voted_at = current_time;
+        vote_record_mut.nullifier = [0; 32];  // Not using nullifier for tranche votes (yet)
+
+        emit!(VoteEvent {
+            proposal_id: proposal_mut.id,
+            nullifier: [0; 32],
+            vote_weight: adjusted_stake,
+            timestamp: current_time,
+        });
+
+        Ok(())
+    }
+
+    /// Execute tranche release if voting passed
+    pub fn execute_tranche_release(
+        ctx: Context<ExecuteTrancheRelease>,
+        _project_name: String,
+    ) -> Result<()> {
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // Store values we need before mutable borrows
+        let voting_deadline = ctx.accounts.tranche_proposal.voting_deadline;
+        let proposal_status = ctx.accounts.tranche_proposal.status.clone();
+        let proposal_votes_yes = ctx.accounts.tranche_proposal.votes_yes;
+        let proposal_votes_no = ctx.accounts.tranche_proposal.votes_no;
+        let proposal_votes_abstain = ctx.accounts.tranche_proposal.votes_abstain;
+        let proposal_tranche_id = ctx.accounts.tranche_proposal.tranche_id;
+
+        // Check voting is closed
+        require!(current_time >= voting_deadline, ErrorCode::VotingStillOpen);
+        require!(proposal_status != TrancheVoteStatus::Executed, ErrorCode::TrancheAlreadyReleased);
+
+        // Calculate approval rate
+        let total_votes = proposal_votes_yes
+            .checked_add(proposal_votes_no).unwrap()
+            .checked_add(proposal_votes_abstain).unwrap();
+
+        require!(total_votes > 0, ErrorCode::InsufficientVotes);
+
+        let approval_rate = (proposal_votes_yes * 100) / total_votes;
+
+        // Require 66%+ supermajority
+        require!(approval_rate >= 66, ErrorCode::InsufficientVoteApproval);
+        require!(proposal_votes_yes > proposal_votes_no, ErrorCode::InsufficientVoteApproval);
+
+        // Get values from project and tranche
+        let (project_id, project_name, tranche_funding, tranche_recipient, tranche_sequence) = {
+            let project = &ctx.accounts.transhuman_project;
+            let tranche = project.tranches.iter()
+                .find(|t| t.sequence == proposal_tranche_id as u8)
+                .ok_or(ErrorCode::TrancheNotFound)?;
+
+            require!(!tranche.released, ErrorCode::TrancheAlreadyReleased);
+
+            (
+                project.id,
+                project.name.clone(),
+                tranche.funding_amount,
+                tranche.recipient,
+                tranche.sequence,
+            )
+        };
+
+        // Transfer funds from treasury to recipient
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.treasury.to_account_info(),
+            to: ctx.accounts.recipient_token_account.to_account_info(),
+            authority: ctx.accounts.transhuman_project.to_account_info(),
+        };
+
+        let project_name_bytes = project_name.as_bytes();
+
+        let seeds = &[
+            b"project",
+            project_name_bytes,
+            &[ctx.bumps.transhuman_project],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+        token::transfer(cpi_ctx, tranche_funding)?;
+
+        // Now do the mutable updates after CPI
+        let project = &mut ctx.accounts.transhuman_project;
+        let tranche = project.tranches.iter_mut()
+            .find(|t| t.sequence == proposal_tranche_id as u8)
+            .ok_or(ErrorCode::TrancheNotFound)?;
+
+        // Create immutable release record
+        let record = &mut ctx.accounts.tranche_release_record;
+        record.project_id = project_id;
+        record.project_name = project_name.clone();
+        record.tranche_id = proposal_tranche_id;
+        record.tranche_sequence = tranche_sequence;
+        record.milestone_description = ctx.accounts.milestone.description.clone();
+        record.amount = tranche_funding;
+        record.recipient = tranche_recipient;
+        record.released_at = current_time;
+        record.oracle_attestations_count = ctx.accounts.milestone.attestations.len() as u8;
+        record.vote_approval_rate = approval_rate as u8;
+        record.arweave_hash = None;
+
+        // Mark tranche as released
+        tranche.released = true;
+        tranche.released_at = Some(current_time);
+
+        // Update project status if fully funded
+        if project.is_fully_funded() {
+            project.status = tranche::ProjectStatus::Completed;
+            project.completed_at = Some(current_time);
+        }
+
+        // Update proposal status
+        let proposal_mut = &mut ctx.accounts.tranche_proposal;
+        proposal_mut.status = TrancheVoteStatus::Executed;
+
+        // Emit event
+        emit!(TrancheReleased {
+            project_id,
+            project_name,
+            tranche_id: proposal_tranche_id,
+            milestone: ctx.accounts.milestone.description.clone(),
+            amount: tranche_funding,
+            recipient: tranche_recipient,
+            released_at: current_time,
+            vote_approval: approval_rate as u8,
+        });
+
+        Ok(())
+    }
 }
 
 // Account Structures
@@ -804,6 +1115,30 @@ pub enum ErrorCode {
     MilestoneIdMismatch,
     #[msg("Milestone has not been verified")]
     MilestoneNotVerified,
+    #[msg("Project name exceeds maximum length (128 chars)")]
+    ProjectNameTooLong,
+    #[msg("Project description exceeds maximum length (1000 chars)")]
+    ProjectDescriptionTooLong,
+    #[msg("Invalid tranche count (must be 1-10)")]
+    InvalidTrancheCount,
+    #[msg("Tranches must be in order (sequence 1, 2, 3...)")]
+    InvalidTrancheSequence,
+    #[msg("Unlock dates must be increasing")]
+    InvalidUnlockDates,
+    #[msg("Invalid voting period (min 1 day, max 30 days)")]
+    InvalidVotingPeriod,
+    #[msg("Tranche not found")]
+    TrancheNotFound,
+    #[msg("Tranche is not yet unlocked")]
+    TrancheNotYetUnlocked,
+    #[msg("Tranche has already been released")]
+    TrancheAlreadyReleased,
+    #[msg("Voting period is still open")]
+    VotingStillOpen,
+    #[msg("Insufficient vote approval for release (need 66%+)")]
+    InsufficientVoteApproval,
+    #[msg("Invalid funding amount (must be > 0)")]
+    InvalidFundingAmount,
 }
 
 // Account Contexts for Oracle Operations
@@ -867,5 +1202,115 @@ pub struct SubmitMilestoneAttestation<'info> {
 pub struct VerifyMilestone<'info> {
     #[account(mut)]
     pub milestone: Account<'info, Milestone>,
+}
+
+// Week 3: Tranche Voting Contexts
+
+#[derive(Accounts)]
+#[instruction(project_name: String)]
+pub struct ProposeTranhumanProject<'info> {
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + 8 + 4 + 128 + 4 + 1000 + 32 + 8 + 32 + 8 + 4 + 200 + 1 + 4 + 8 + 8 + 1 + 4 + 8,
+        seeds = [b"project", project_name.as_bytes()],
+        bump
+    )]
+    pub transhuman_project: Account<'info, TranhumanProject>,
+
+    #[account(
+        init,
+        payer = creator,
+        associated_token::mint = mint,
+        associated_token::authority = transhuman_project
+    )]
+    pub treasury: Account<'info, TokenAccount>,
+
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub creator: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+}
+
+#[derive(Accounts)]
+#[instruction(voting_period_seconds: u64)]
+pub struct ProposeTrancheRelease<'info> {
+    #[account(
+        init,
+        payer = proposer,
+        space = 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 1,
+        seeds = [b"tranche_proposal", proposer.key().as_ref()],
+        bump
+    )]
+    pub tranche_proposal: Account<'info, TrancheReleaseProposal>,
+
+    pub transhuman_project: Account<'info, TranhumanProject>,
+    pub milestone: Account<'info, Milestone>,
+
+    #[account(mut)]
+    pub proposer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct VoteOnTrancheRelease<'info> {
+    #[account(mut)]
+    pub tranche_proposal: Account<'info, TrancheReleaseProposal>,
+
+    #[account(
+        seeds = [b"stake", voter.key().as_ref()],
+        bump
+    )]
+    pub stake: Account<'info, Stake>,
+
+    #[account(
+        init,
+        payer = voter,
+        space = 8 + 32 + 1 + 8 + 8,
+        seeds = [b"tranche_vote", tranche_proposal.key().as_ref(), voter.key().as_ref()],
+        bump
+    )]
+    pub vote_record: Account<'info, VoteRecord>,
+
+    pub config: Account<'info, GlobalConfig>,
+    #[account(mut)]
+    pub voter: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(project_name: String)]
+pub struct ExecuteTrancheRelease<'info> {
+    #[account(mut)]
+    pub tranche_proposal: Account<'info, TrancheReleaseProposal>,
+
+    #[account(
+        mut,
+        seeds = [b"project", project_name.as_bytes()],
+        bump
+    )]
+    pub transhuman_project: Account<'info, TranhumanProject>,
+
+    pub milestone: Account<'info, Milestone>,
+
+    #[account(mut)]
+    pub treasury: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub recipient_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        init,
+        payer = executor,
+        space = 8 + 8 + 4 + 128 + 8 + 8 + 4 + 500 + 8 + 8 + 32 + 1 + 4 + 1
+    )]
+    pub tranche_release_record: Account<'info, tranche::TrancheReleaseRecord>,
+
+    #[account(mut)]
+    pub executor: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 

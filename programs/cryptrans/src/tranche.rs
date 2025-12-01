@@ -169,6 +169,17 @@ pub enum TrancheVoteType {
     Abstain,
 }
 
+/// Event: Project proposed (immutable record)
+#[event]
+pub struct ProjectProposed {
+    pub project_id: u64,
+    pub project_name: String,
+    pub creator: Pubkey,
+    pub total_funding: u64,
+    pub tranches_count: u8,
+    pub created_at: u64,
+}
+
 /// Event: Tranche released (immutable record)
 #[event]
 pub struct TrancheReleased {
