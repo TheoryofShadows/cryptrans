@@ -3,7 +3,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-cryptrans = "B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK"
+cryptrans = "B346Vx1KonmcvcHrXq6ukyNBKVTZKpmB79LESakd6ALB"
 
 [programs.localnet]
 cryptrans = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"

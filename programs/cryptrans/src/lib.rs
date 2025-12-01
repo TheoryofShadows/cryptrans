@@ -13,7 +13,7 @@ use tranche::{
     TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType,
 };
 
-declare_id!("B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK");
+declare_id!("B346Vx1KonmcvcHrXq6ukyNBKVTZKpmB79LESakd6ALB");
 
 /// Helper struct for creating tranches in propose_transhuman_project
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
