@@ -14,7 +14,7 @@ module.exports = function override(config) {
     zlib: require.resolve('browserify-zlib'),
     buffer: require.resolve('buffer'),
     vm: require.resolve('vm-browserify'),
-    process: require.resolve('process/browser.js'),
+    process: require.resolve('process/browser'),
   });
 
   config.resolve.fallback = fallback;
@@ -22,13 +22,9 @@ module.exports = function override(config) {
   // Add alias to handle process/browser imports
   config.resolve.alias = {
     ...config.resolve.alias,
-    'process/browser': require.resolve('process/browser.js'),
-    'process': require.resolve('process/browser.js'),
-  };
-
-  // Handle ES module imports
-  config.resolve.extensionAlias = {
-    '.js': ['.js', '.ts', '.tsx']
+    'process/browser.js': require.resolve('process/browser'),
+    'process/browser': require.resolve('process/browser'),
+    'process': require.resolve('process/browser'),
   };
 
   // Disable fully specified requirement for ES modules
@@ -41,7 +37,7 @@ module.exports = function override(config) {
 
   config.plugins = (config.plugins || []).concat([
     new webpack.ProvidePlugin({
-      process: 'process/browser.js',
+      process: 'process/browser',
       Buffer: ['buffer', 'Buffer'],
     }),
   ]);
