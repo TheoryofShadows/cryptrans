@@ -1,0 +1,49 @@
+Folder PATH listing for volume Windows
+Volume serial number is 2E4F-B907
+C:.
+|   .gitignore
+|   Anchor.toml
+|   Cargo.toml
+|   DEPLOYMENT.md
+|   DIRECTORY_STRUCTURE.txt
+|   GITHUB_SETUP.md
+|   init-github.bat
+|   init-github.sh
+|   LICENSE
+|   package.json
+|   PROJECT_SUMMARY.md
+|   QUICK_START.md
+|   README.md
+|   
++---app
+|   |   package.json
+|   |   
+|   +---public
+|   |       index.html
+|   |       
+|   \---src
+|       |   App.css
+|       |   App.js
+|       |   index.css
+|       |   index.js
+|       |   
+|       \---idl
+|               cryptrans.json
+|               
++---programs
+|   \---cryptrans
+|       |   Cargo.toml
+|       |   Xbuild.rs
+|       |   
+|       \---src
+|               lib.rs
+|               
++---scripts
+|       copy-idl.js
+|       create-token.sh
+|       deploy.sh
+|       setup.js
+|       
++---target
+|   \---idl
+\---tests
