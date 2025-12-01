@@ -33,7 +33,8 @@ describe("cryptrans", () => {
   let proposalPda: PublicKey;
   let treasury: PublicKey;
   let voteRecordPda: PublicKey;
-  
+  let configPda: PublicKey;
+
   const user = provider.wallet;
   const payer = (provider.wallet as any).payer as Keypair;
   
@@ -95,6 +96,33 @@ describe("cryptrans", () => {
       stakePda,
       true
     );
+
+    // Derive config PDA
+    [configPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("config")],
+      program.programId
+    );
+
+    // Initialize config if not already initialized
+    try {
+      await program.account.globalConfig.fetch(configPda);
+      console.log("Config already initialized");
+    } catch {
+      console.log("Initializing config...");
+      await program.methods
+        .initializeConfig(
+          new anchor.BN(1_000_000_000), // voting_threshold: 1 token
+          new anchor.BN(200), // demurrage_rate: 2% annually
+          new anchor.BN(604800), // proposal_duration_seconds: 1 week
+          4 // pow_difficulty: 4 leading zeros
+        )
+        .accounts({
+          config: configPda,
+          admin: payer.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    }
 
     console.log("Setup complete");
   });
@@ -195,14 +223,14 @@ describe("cryptrans", () => {
           proposalId,
           description,
           fundingNeeded,
-          powNonce,
-          4
+          powNonce
         )
         .accounts({
           proposal: proposalPda,
           creator: payer.publicKey,
           mint: mint,
           treasury: treasury,
+          config: configPda,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -239,20 +267,20 @@ describe("cryptrans", () => {
             newId,
             description,
             fundingNeeded,
-            invalidNonce,
-            4
+            invalidNonce
           )
           .accounts({
             proposal: newProposalPda,
             creator: payer.publicKey,
             mint: mint,
             treasury: newTreasury,
+            config: configPda,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           })
           .rpc();
-        
+
         assert.fail("Should have rejected invalid PoW");
       } catch (error) {
         assert.ok(error.toString().includes("InvalidPoW"));
@@ -263,7 +291,7 @@ describe("cryptrans", () => {
       const longDescription = "a".repeat(201); // Exceeds 200 char limit
       const powForLong = generatePoW(longDescription, 4);
       const newId = new anchor.BN(Date.now() + 2);
-      
+
       const [newProposalPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("proposal"), newId.toArray("le", 8)],
         program.programId
@@ -281,20 +309,20 @@ describe("cryptrans", () => {
             newId,
             longDescription,
             fundingNeeded,
-            powForLong,
-            4
+            powForLong
           )
           .accounts({
             proposal: newProposalPda,
             creator: payer.publicKey,
             mint: mint,
             treasury: newTreasury,
+            config: configPda,
             systemProgram: SystemProgram.programId,
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           })
           .rpc();
-        
+
         assert.fail("Should have rejected description that's too long");
       } catch (error) {
         assert.ok(error.toString().includes("DescriptionTooLong"));
@@ -303,9 +331,34 @@ describe("cryptrans", () => {
   });
 
   describe("Voting", () => {
-    it("Casts vote successfully", async () => {
-      const zkProof = "mock_zk_proof_" + Math.random().toString();
+    // Helper to generate mock proof bytes
+    function generateMockProof(): { proofA: number[]; proofB: number[]; proofC: number[] } {
+      return {
+        proofA: Array(64).fill(0).map(() => Math.floor(Math.random() * 256)),
+        proofB: Array(128).fill(0).map(() => Math.floor(Math.random() * 256)),
+        proofC: Array(64).fill(0).map(() => Math.floor(Math.random() * 256)),
+      };
+    }
 
+    it("Registers commitment for ZK proof", async () => {
+      // Generate a test commitment (in production, this is Poseidon(secret))
+      const commitment = Array(32).fill(1); // Non-zero commitment
+
+      const tx = await program.methods
+        .registerCommitment(commitment)
+        .accounts({
+          stake: stakePda,
+          user: payer.publicKey,
+        })
+        .rpc();
+
+      console.log("Register commitment tx:", tx);
+
+      const stakeAccount = await program.account.stake.fetch(stakePda);
+      assert.ok(stakeAccount.commitment.every((b, i) => b === commitment[i]));
+    });
+
+    it("Casts vote successfully with ZK proof", async () => {
       [voteRecordPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("vote"), proposalPda.toBuffer(), payer.publicKey.toBuffer()],
         program.programId
@@ -314,18 +367,24 @@ describe("cryptrans", () => {
       const proposalBefore = await program.account.proposal.fetch(proposalPda);
       const votesBefore = proposalBefore.votes.toNumber();
 
+      // Generate mock proof
+      const proof = generateMockProof();
+      const nullifier = Array(32).fill(2); // Non-zero nullifier
+      const commitment = Array(32).fill(1); // Matches registered commitment
+
       const tx = await program.methods
-        .vote(zkProof)
+        .voteWithZk(nullifier, commitment, proof.proofA, proof.proofB, proof.proofC)
         .accounts({
           proposal: proposalPda,
           stake: stakePda,
           voteRecord: voteRecordPda,
+          config: configPda, // Need to initialize config first
           voter: payer.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      console.log("Vote tx:", tx);
+      console.log("Vote with ZK tx:", tx);
 
       const proposalAfter = await program.account.proposal.fetch(proposalPda);
       const votesAfter = proposalAfter.votes.toNumber();
@@ -339,35 +398,34 @@ describe("cryptrans", () => {
       assert.ok(voteRecord.voteWeight.toNumber() > 0);
     });
 
-    it("Prevents double voting", async () => {
-      const zkProof = "mock_zk_proof_" + Math.random().toString();
+    it("Prevents double voting with nullifier check", async () => {
+      const proof = generateMockProof();
+      const nullifier = Array(32).fill(2);
+      const commitment = Array(32).fill(1);
 
       try {
         await program.methods
-          .vote(zkProof)
+          .voteWithZk(nullifier, commitment, proof.proofA, proof.proofB, proof.proofC)
           .accounts({
             proposal: proposalPda,
             stake: stakePda,
             voteRecord: voteRecordPda,
+            config: configPda,
             voter: payer.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .rpc();
-        
+
         assert.fail("Should have prevented double voting");
       } catch (error) {
-        // Should fail because account already exists or has AlreadyVoted error
-        assert.ok(
-          error.toString().includes("AlreadyVoted") || 
-          error.toString().includes("already in use")
-        );
+        assert.ok(error.toString().includes("AlreadyVoted"));
       }
     });
 
-    it("Rejects empty ZK proof", async () => {
+    it("Rejects zero proof (Groth16 structural validation)", async () => {
       // Create a second user to test with
       const user2 = Keypair.generate();
-      
+
       // Airdrop some SOL
       const airdropSig = await provider.connection.requestAirdrop(
         user2.publicKey,
@@ -391,28 +449,113 @@ describe("cryptrans", () => {
         .signers([user2])
         .rpc();
 
-      // Try to vote with empty proof
+      // Register commitment
+      const commitment = Array(32).fill(3);
+      await program.methods
+        .registerCommitment(commitment)
+        .accounts({
+          stake: stake2Pda,
+          user: user2.publicKey,
+        })
+        .signers([user2])
+        .rpc();
+
+      // Try to vote with zero proof
       const [voteRecord2Pda] = PublicKey.findProgramAddressSync(
         [Buffer.from("vote"), proposalPda.toBuffer(), user2.publicKey.toBuffer()],
         program.programId
       );
 
       try {
+        // All-zero proof should be rejected by Groth16 verifier
         await program.methods
-          .vote("") // Empty proof
+          .voteWithZk(
+            Array(32).fill(0), // Zero nullifier
+            commitment,
+            Array(64).fill(0), // Zero proof_a
+            Array(128).fill(0), // Zero proof_b
+            Array(64).fill(0)  // Zero proof_c
+          )
           .accounts({
             proposal: proposalPda,
             stake: stake2Pda,
             voteRecord: voteRecord2Pda,
+            config: configPda,
             voter: user2.publicKey,
             systemProgram: SystemProgram.programId,
           })
           .signers([user2])
           .rpc();
-        
-        assert.fail("Should have rejected empty ZK proof");
+
+        assert.fail("Should have rejected zero proof");
       } catch (error) {
         assert.ok(error.toString().includes("InvalidZKProof"));
+      }
+    });
+
+    it("Validates commitment matches registered value", async () => {
+      // Create a third user
+      const user3 = Keypair.generate();
+
+      const airdropSig = await provider.connection.requestAirdrop(
+        user3.publicKey,
+        2 * LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(airdropSig);
+
+      const [stake3Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("stake"), user3.publicKey.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .initializeStake()
+        .accounts({
+          stake: stake3Pda,
+          user: user3.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user3])
+        .rpc();
+
+      // Register commitment A
+      const commitmentA = Array(32).fill(4);
+      await program.methods
+        .registerCommitment(commitmentA)
+        .accounts({
+          stake: stake3Pda,
+          user: user3.publicKey,
+        })
+        .signers([user3])
+        .rpc();
+
+      // Try to vote with commitment B (doesn't match)
+      const commitmentB = Array(32).fill(5);
+      const proof = generateMockProof();
+      const nullifier = Array(32).fill(6);
+
+      const [voteRecord3Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vote"), proposalPda.toBuffer(), user3.publicKey.toBuffer()],
+        program.programId
+      );
+
+      try {
+        await program.methods
+          .voteWithZk(nullifier, commitmentB, proof.proofA, proof.proofB, proof.proofC)
+          .accounts({
+            proposal: proposalPda,
+            stake: stake3Pda,
+            voteRecord: voteRecord3Pda,
+            config: configPda,
+            voter: user3.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user3])
+          .rpc();
+
+        assert.fail("Should have rejected mismatched commitment");
+      } catch (error) {
+        assert.ok(error.toString().includes("CommitmentMismatch"));
       }
     });
   });
@@ -458,6 +601,7 @@ describe("cryptrans", () => {
           proposal: proposalPda,
           treasury: treasury,
           recipient: recipient,
+          config: configPda,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
@@ -493,10 +637,11 @@ describe("cryptrans", () => {
             proposal: proposalPda,
             treasury: treasury,
             recipient: recipient,
+            config: configPda,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
           .rpc();
-        
+
         assert.fail("Should have prevented double funding");
       } catch (error) {
         assert.ok(error.toString().includes("AlreadyFunded"));
@@ -505,7 +650,7 @@ describe("cryptrans", () => {
   });
 
   describe("Integration Tests", () => {
-    it("Complete workflow: stake -> create -> vote -> fund", async () => {
+    it("Complete workflow: stake -> create -> register -> vote with ZK", async () => {
       // Create a fresh user
       const newUser = Keypair.generate();
       
@@ -589,14 +734,14 @@ describe("cryptrans", () => {
           newProposalId,
           newDescription,
           new anchor.BN(300_000_000),
-          powNonce,
-          4
+          powNonce
         )
         .accounts({
           proposal: newProposalPda,
           creator: newUser.publicKey,
           mint: mint,
           treasury: newTreasury,
+          config: configPda,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -604,18 +749,38 @@ describe("cryptrans", () => {
         .signers([newUser])
         .rpc();
 
-      // Vote on proposal
+      // Register commitment for ZK voting
+      const commitment = Array(32).fill(7);
+      await program.methods
+        .registerCommitment(commitment)
+        .accounts({
+          stake: newStakePda,
+          user: newUser.publicKey,
+        })
+        .signers([newUser])
+        .rpc();
+
+      // Vote on proposal with ZK proof
       const [newVoteRecordPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("vote"), newProposalPda.toBuffer(), newUser.publicKey.toBuffer()],
         program.programId
       );
 
+      // Generate mock proof
+      const proof = {
+        proofA: Array(64).fill(0).map(() => Math.floor(Math.random() * 256)),
+        proofB: Array(128).fill(0).map(() => Math.floor(Math.random() * 256)),
+        proofC: Array(64).fill(0).map(() => Math.floor(Math.random() * 256)),
+      };
+      const nullifier = Array(32).fill(8);
+
       await program.methods
-        .vote("mock_zk_proof_integration")
+        .voteWithZk(nullifier, commitment, proof.proofA, proof.proofB, proof.proofC)
         .accounts({
           proposal: newProposalPda,
           stake: newStakePda,
           voteRecord: newVoteRecordPda,
+          config: configPda,
           voter: newUser.publicKey,
           systemProgram: SystemProgram.programId,
         })
