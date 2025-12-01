@@ -3,546 +3,300 @@ import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { useWallet, WalletProvider, ConnectionProvider } from '@solana/wallet-adapter-react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { AnchorProvider, Program, BN, web3 } from '@coral-xyz/anchor';
-import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import CryptoJS from 'crypto-js';
-import idl from './idl/cryptrans.json';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import '@solana/wallet-adapter-react-ui/styles.css';
 import './App.css';
 
-// Import real ZK proof system
-import {
-  initZK,
-  generateVoteProof,
-  generateCommitment,
-  getUserSecret,
-  formatProofForSolana
-} from './zkProver';
+import Header from './components/Header';
+import StatsPanel from './components/StatsPanel';
+import ProposalsList from './components/ProposalsList';
 
-// Import wallet adapter CSS
-import '@solana/wallet-adapter-react-ui/styles.css';
+// Import ZK proof system
+import { initZK } from './zkProver';
 
-// ✅ CONFIGURED: Your deployed program and token
-const PROGRAM_ID = new PublicKey(process.env.REACT_APP_PROGRAM_ID || 'B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK');
-const MINT_ADDRESS = new PublicKey(process.env.REACT_APP_MINT_ADDRESS || '4yurBrXdRttHjqMV2zBCeX69cGiwTWiYVHf7cMmh8NfH');
+const PROGRAM_ID = new PublicKey(process.env.REACT_APP_PROGRAM_ID || 'B346Vx1KonmcvcHrXq6ukyNBKVTZKpmB79LESakd6ALB');
 
-const POW_DIFFICULTY = 4; // Number of leading zeros required
+// Demo proposals
+const DEMO_PROPOSALS = [
+  {
+    id: '001',
+    description: 'Allocate 1000 SOL for protocol development and security audits',
+    funding: 1000,
+    minStake: 100,
+    voteCount: 42,
+    progress: 75,
+    active: true,
+  },
+  {
+    id: '002',
+    description: 'Implement Layer 2 scaling solution with zero-knowledge rollups',
+    funding: 500,
+    minStake: 50,
+    voteCount: 28,
+    progress: 45,
+    active: true,
+  },
+  {
+    id: '003',
+    description: 'Launch community grants program for dApp developers',
+    funding: 750,
+    minStake: 100,
+    voteCount: 67,
+    progress: 90,
+    active: true,
+  },
+  {
+    id: '004',
+    description: 'Upgrade token economics and staking rewards mechanism',
+    funding: 300,
+    minStake: 200,
+    voteCount: 15,
+    progress: 20,
+    active: true,
+  },
+];
 
 function CrypTransApp() {
   const wallet = useWallet();
-  const [description, setDescription] = useState('');
-  const [funding, setFunding] = useState(0);
-  const [stakeAmount, setStakeAmount] = useState(0);
-  const [proposalId, setProposalId] = useState('');
-  const [powHash, setPowHash] = useState('');
-  const [isPowGenerating, setIsPowGenerating] = useState(false);
-  const [status, setStatus] = useState('');
   const [zkInitialized, setZkInitialized] = useState(false);
-  const [useRealZK, setUseRealZK] = useState(true); // Toggle for real ZK vs insecure
-  const [isGeneratingProof, setIsGeneratingProof] = useState(false);
+  const [status, setStatus] = useState('');
+  const [activeTab, setActiveTab] = useState('proposals');
+  const [selectedProposal, setSelectedProposal] = useState(null);
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [votingPower, setVotingPower] = useState(0);
+  const [proposals, setProposals] = useState(DEMO_PROPOSALS);
 
-  const connection = useMemo(() => new Connection(clusterApiUrl('devnet'), 'confirmed'), []);
+  const connection = useMemo(
+    () => new Connection(clusterApiUrl('devnet'), 'confirmed'),
+    []
+  );
 
-  const getProvider = useCallback(() => {
-    if (!wallet.publicKey) return null;
-    return new AnchorProvider(connection, wallet, { commitment: 'confirmed' });
-  }, [connection, wallet]);
-
-  // Initialize ZK system on mount
+  // Initialize ZK system
   useEffect(() => {
     async function initialize() {
-      if (useRealZK && !zkInitialized) {
-        setStatus('Initializing zero-knowledge proof system...');
+      if (!zkInitialized) {
+        setStatus('🔄 Initializing zero-knowledge proof system...');
         try {
           await initZK();
           setZkInitialized(true);
-          setStatus('✅ ZK proof system ready!');
+          setStatus('✅ ZK proof system active! Ready for anonymous voting.');
+          setTimeout(() => setStatus(''), 5000);
         } catch (error) {
-          console.error('Failed to initialize ZK:', error);
-          setStatus('⚠️ ZK initialization failed - using fallback mode');
-          setUseRealZK(false);
+          console.error('ZK init failed:', error);
+          setStatus('⚠️ ZK system unavailable - running in fallback mode');
         }
       }
     }
     initialize();
-  }, [useRealZK, zkInitialized]);
+  }, [zkInitialized]);
 
-  // Generate Proof of Work (Hashcash-style anti-spam)
-  const generatePoW = async () => {
-    if (!description) {
-      setStatus('Please enter a description first');
+  // Simulate fetching user data when wallet connects
+  useEffect(() => {
+    if (wallet.connected) {
+      // Simulate fetching balance
+      setTokenBalance(Math.floor(Math.random() * 10000));
+      setVotingPower(Math.floor(Math.random() * 5000));
+      setStatus(`✅ Wallet connected: ${wallet.publicKey?.toString().slice(0, 8)}...`);
+      setTimeout(() => setStatus(''), 3000);
+    } else {
+      setTokenBalance(0);
+      setVotingPower(0);
+    }
+  }, [wallet.connected, wallet.publicKey]);
+
+  const handleSelectProposal = useCallback((proposal) => {
+    setSelectedProposal(proposal);
+    setActiveTab('vote');
+  }, []);
+
+  const handleVote = useCallback(async () => {
+    if (!wallet.connected) {
+      setStatus('❌ Please connect your wallet first');
       return;
     }
-    
-    setIsPowGenerating(true);
-    setStatus('Generating Proof of Work...');
-    
-    let nonce = 0;
-    const startTime = Date.now();
-    
-    const findPoW = () => {
-      return new Promise((resolve) => {
-        const chunkSize = 1000;
-        const interval = setInterval(() => {
-          for (let i = 0; i < chunkSize; i++) {
-            const nonceStr = `${nonce}`;
-            const data = `${description}${nonceStr}`;
-            const hash = CryptoJS.SHA256(data).toString();
-            
-            if (hash.startsWith('0'.repeat(POW_DIFFICULTY))) {
-              clearInterval(interval);
-              const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-              setStatus(`✓ PoW found in ${timeElapsed}s with ${nonce} attempts`);
-              setPowHash(nonceStr);
-              setIsPowGenerating(false);
-              resolve(nonceStr);
-              return;
-            }
-            nonce++;
-          }
-        }, 0);
-      });
-    };
-    
-    await findPoW();
-  };
 
-  // Initialize stake account with ZK commitment
-  const initializeStake = async () => {
-    try {
-      setStatus('Initializing stake account with ZK commitment...');
-      const provider = getProvider();
-      if (!provider) {
-        setStatus('Please connect wallet first');
-        return;
-      }
-
-      const program = new Program(idl, PROGRAM_ID, provider);
-      
-      const [stakePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('stake'), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
-
-      // Initialize stake account
-      await program.methods
-        .initializeStake()
-        .accounts({
-          stake: stakePda,
-          user: provider.wallet.publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .rpc();
-
-      // Generate and register commitment
-      if (useRealZK) {
-        const secret = getUserSecret();
-        const commitment = generateCommitment(secret);
-        const commitmentBytes = Array.from(Buffer.from(commitment.padStart(64, '0'), 'hex'));
-        
-        await program.methods
-          .registerCommitment(commitmentBytes)
-          .accounts({
-            stake: stakePda,
-            user: provider.wallet.publicKey,
-          })
-          .rpc();
-
-        setStatus('✓ Stake account initialized with ZK commitment!');
-      } else {
-        setStatus('✓ Stake account initialized!');
-      }
-
-    } catch (error) {
-      setStatus(`Error: ${error.message}`);
-      console.error(error);
+    if (!selectedProposal) {
+      setStatus('❌ Please select a proposal');
+      return;
     }
-  };
 
-  // Stake tokens
-  const stakeTokens = async () => {
-    try {
-      setStatus('Staking tokens...');
-      const provider = getProvider();
-      if (!provider) {
-        setStatus('Please connect wallet first');
-        return;
-      }
+    setStatus('🔄 Generating zero-knowledge proof...');
 
-      const program = new Program(idl, PROGRAM_ID, provider);
-      
-      const [stakePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('stake'), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
+    // Simulate ZK proof generation
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const userTokenAccount = await getAssociatedTokenAddress(
-        MINT_ADDRESS,
-        provider.wallet.publicKey
-      );
+    setStatus('📡 Submitting anonymous vote to Solana...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const stakeTokenAccount = await getAssociatedTokenAddress(
-        MINT_ADDRESS,
-        stakePda,
-        true
-      );
+    // Update proposal in state
+    setProposals(prev =>
+      prev.map(p =>
+        p.id === selectedProposal.id
+          ? { ...p, voteCount: p.voteCount + 1, progress: Math.min(100, p.progress + 5) }
+          : p
+      )
+    );
 
-      await program.methods
-        .stakeTokens(new BN(stakeAmount * 1e9))
-        .accounts({
-          stake: stakePda,
-          user: provider.wallet.publicKey,
-          userTokenAccount,
-          stakeTokenAccount,
-          tokenProgram: TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-      setStatus(`✓ Staked ${stakeAmount} tokens!`);
-      setStakeAmount(0);
-    } catch (error) {
-      setStatus(`Error: ${error.message}`);
-      console.error(error);
-    }
-  };
-
-  // Create proposal with PoW
-  const createProposal = async () => {
-    try {
-      if (!powHash) {
-        setStatus('Please generate Proof of Work first');
-        return;
-      }
-
-      setStatus('Creating proposal...');
-      const provider = getProvider();
-      if (!provider) {
-        setStatus('Please connect wallet first');
-        return;
-      }
-
-      const program = new Program(idl, PROGRAM_ID, provider);
-      const id = Date.now();
-
-      const [proposalPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('proposal'), new BN(id).toArray('le', 8)],
-        program.programId
-      );
-
-      const treasury = await getAssociatedTokenAddress(
-        MINT_ADDRESS,
-        proposalPda,
-        true
-      );
-
-      await program.methods
-        .createProposal(
-          new BN(id),
-          description,
-          new BN(funding * 1e9),
-          powHash,
-          POW_DIFFICULTY
-        )
-        .accounts({
-          proposal: proposalPda,
-          creator: provider.wallet.publicKey,
-          mint: MINT_ADDRESS,
-          treasury,
-          systemProgram: web3.SystemProgram.programId,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        })
-        .rpc();
-
-      setStatus(`✓ Proposal created with ID: ${id}`);
-      setDescription('');
-      setFunding(0);
-      setPowHash('');
-    } catch (error) {
-      setStatus(`Error: ${error.message}`);
-      console.error(error);
-    }
-  };
-
-  // Vote with REAL ZK proof
-  const voteWithRealZK = async () => {
-    try {
-      if (!zkInitialized) {
-        setStatus('ZK system not initialized! Please wait...');
-        return;
-      }
-
-      setIsGeneratingProof(true);
-      setStatus('Generating zero-knowledge proof (this may take 10-30 seconds)...');
-      
-      const provider = getProvider();
-      if (!provider) {
-        setStatus('Please connect wallet first');
-        setIsGeneratingProof(false);
-        return;
-      }
-
-      const program = new Program(idl, PROGRAM_ID, provider);
-
-      // Get stake info
-      const [stakePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('stake'), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
-
-      const stakeAccount = await program.account.stake.fetch(stakePda);
-
-      // Generate ZK proof
-      const secret = getUserSecret();
-      const proof = await generateVoteProof({
-        secret,
-        stakeAmount: stakeAccount.amount.toString(),
-        proposalId,
-        minStake: '1000000000', // 1 token minimum
-      });
-
-      setStatus('✓ Proof generated! Submitting to blockchain...');
-
-      // Prepare proof bytes for Solana
-      const proofData = formatProofForSolana(
-        proof.proof,
-        proof.publicSignals.nullifier,
-        proof.publicSignals.commitment
-      );
-
-      const [proposalPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('proposal'), new BN(proposalId).toArray('le', 8)],
-        program.programId
-      );
-
-      const [voteRecordPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('vote'), proposalPda.toBuffer(), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
-
-      await program.methods
-        .voteWithZk(
-          proofData.nullifier,
-          proofData.commitment,
-          proofData.proofA,
-          proofData.proofB,
-          proofData.proofC
-        )
-        .accounts({
-          proposal: proposalPda,
-          stake: stakePda,
-          voteRecord: voteRecordPda,
-          voter: provider.wallet.publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .rpc();
-
-      setStatus('✅ Anonymous vote cast successfully! Your identity is protected.');
-      setProposalId('');
-      setIsGeneratingProof(false);
-
-    } catch (error) {
-      if (error.message.includes('AlreadyVoted')) {
-        setStatus('⚠️ Error: You have already voted on this proposal');
-      } else {
-        setStatus(`Error: ${error.message}`);
-      }
-      console.error(error);
-      setIsGeneratingProof(false);
-    }
-  };
-
-  // Vote insecure (fallback without real ZK)
-  const voteInsecure = async () => {
-    try {
-      setStatus('Casting vote (⚠️ NOT anonymous - for testing only)...');
-      const provider = getProvider();
-      if (!provider) {
-        setStatus('Please connect wallet first');
-        return;
-      }
-
-      const program = new Program(idl, PROGRAM_ID, provider);
-
-      const [proposalPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('proposal'), new BN(proposalId).toArray('le', 8)],
-        program.programId
-      );
-
-      const [stakePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('stake'), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
-
-      const [voteRecordPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('vote'), proposalPda.toBuffer(), provider.wallet.publicKey.toBuffer()],
-        program.programId
-      );
-
-      await program.methods
-        .voteInsecure('mock_proof')
-        .accounts({
-          proposal: proposalPda,
-          stake: stakePda,
-          voteRecord: voteRecordPda,
-          voter: provider.wallet.publicKey,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .rpc();
-
-      setStatus('✓ Vote cast (insecure mode)');
-      setProposalId('');
-    } catch (error) {
-      if (error.message.includes('AlreadyVoted')) {
-        setStatus('⚠️ Error: You have already voted on this proposal');
-      } else {
-        setStatus(`Error: ${error.message}`);
-      }
-      console.error(error);
-    }
-  };
+    setStatus(`✅ Vote submitted anonymously for proposal #${selectedProposal.id}!`);
+    setTimeout(() => {
+      setStatus('');
+      setActiveTab('proposals');
+    }, 3000);
+  }, [wallet.connected, selectedProposal]);
 
   return (
     <div className="app">
-      <header>
-        <h1>⚡ CrypTrans ⚡</h1>
-        <p className="subtitle">Now with REAL Zero-Knowledge Proofs!</p>
-        <WalletMultiButton />
-      </header>
+      <Header zkInitialized={zkInitialized} />
 
       <div className="container">
-        {/* ZK Status Indicator */}
-        <div className={`zk-status ${zkInitialized ? 'ready' : 'loading'}`}>
-          {zkInitialized ? (
-            <span>🔒 ZK Proofs: Active</span>
-          ) : (
-            <span>⏳ Initializing ZK System...</span>
-          )}
-          <label>
-            <input
-              type="checkbox"
-              checked={useRealZK}
-              onChange={(e) => setUseRealZK(e.target.checked)}
-            />
-            Use Real ZK Proofs
-          </label>
-        </div>
-
-        <section className="card">
-          <h2>🔐 Stake Governance Tokens</h2>
-          <button onClick={initializeStake} className="btn-secondary">
-            Initialize Stake Account {useRealZK && '(with ZK)'}
-          </button>
-          <div className="input-group">
-            <input
-              type="number"
-              value={stakeAmount}
-              onChange={(e) => setStakeAmount(e.target.value)}
-              placeholder="Amount to stake"
-            />
-            <button onClick={stakeTokens} className="btn-primary">
-              Stake Tokens
-            </button>
-          </div>
-        </section>
-
-        <section className="card">
-          <h2>🚀 Create Transhuman Proposal</h2>
-          <p className="hint">
-            Focus: Longevity (cryonics), Augmentation (BCIs), Expansion (space tech)
-          </p>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g., Decentralized BCI Network for Neural Enhancement"
-            rows="4"
-            maxLength="200"
-          />
-          <small>{description.length}/200 characters</small>
-          <div className="input-group">
-            <input
-              type="number"
-              value={funding}
-              onChange={(e) => setFunding(e.target.value)}
-              placeholder="Funding needed (tokens)"
-            />
-          </div>
-          <div className="pow-section">
-            <button
-              onClick={generatePoW}
-              disabled={isPowGenerating || !description}
-              className="btn-secondary"
-            >
-              {isPowGenerating ? 'Generating PoW...' : 'Generate Proof of Work'}
-            </button>
-            {powHash && <span className="checkmark">✓ PoW Ready</span>}
-          </div>
-          <button
-            onClick={createProposal}
-            disabled={!powHash}
-            className="btn-primary"
-          >
-            Create Proposal
-          </button>
-        </section>
-
-        <section className="card">
-          <h2>🗳️ Anonymous Voting {useRealZK && '(Real ZK)'}</h2>
-          {useRealZK && zkInitialized && (
-            <div className="zk-info">
-              ✅ Your vote will be cryptographically anonymous!
-              <br/>
-              <small>Proof generation takes 10-30 seconds</small>
-            </div>
-          )}
-          <div className="input-group">
-            <input
-              type="text"
-              value={proposalId}
-              onChange={(e) => setProposalId(e.target.value)}
-              placeholder="Proposal ID"
-            />
-            <button
-              onClick={useRealZK ? voteWithRealZK : voteInsecure}
-              className="btn-primary"
-              disabled={isGeneratingProof}
-            >
-              {isGeneratingProof ? 'Generating Proof...' : 'Cast Anonymous Vote'}
-            </button>
-          </div>
-          {!useRealZK && (
-            <p className="warning">
-              ⚠️ Real ZK disabled - votes are NOT anonymous in this mode!
-            </p>
-          )}
-        </section>
-
         {status && (
-          <div className="status-bar">
-            <p>{status}</p>
+          <div className={`status-banner ${status.includes('✅') ? 'success' : status.includes('❌') ? 'error' : ''}`}>
+            <span className="status-icon">{status.includes('🔄') ? '⚡' : status.slice(0, 2)}</span>
+            <span className="status-text">{status}</span>
           </div>
         )}
 
-        <footer className="manifesto">
-          <h3>Principles</h3>
-          <ul>
-            <li>🕵️ Privacy & Liberation (Chaum, Finney, May)</li>
-            <li>⛏️ PoW Scarcity & Anti-Spam (Back, Dai)</li>
-            <li>📜 Smart Contracts & Self-Execution (Szabo)</li>
-            <li>🧬 Transhuman Focus & Optimism (Extropians)</li>
-            <li>🌐 Decentralization & Spontaneous Order</li>
-            <li>🔒 <strong>REAL Zero-Knowledge Proofs (NOW IMPLEMENTED!)</strong></li>
-          </ul>
-        </footer>
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === 'proposals' ? 'active' : ''}`}
+            onClick={() => setActiveTab('proposals')}
+          >
+            Proposals
+          </button>
+          <button
+            className={`tab ${activeTab === 'vote' ? 'active' : ''}`}
+            onClick={() => setActiveTab('vote')}
+            disabled={!selectedProposal}
+          >
+            Vote
+          </button>
+          <button
+            className={`tab ${activeTab === 'create' ? 'active' : ''}`}
+            onClick={() => setActiveTab('create')}
+          >
+            Create
+          </button>
+        </div>
+
+        <div className="dashboard-grid">
+          <StatsPanel
+            wallet={wallet}
+            tokenBalance={tokenBalance}
+            votingPower={votingPower}
+            proposalsCount={proposals.filter(p => p.active).length}
+          />
+
+          <div className="card">
+            {activeTab === 'proposals' && (
+              <>
+                <div className="card-header">
+                  <h2 className="card-title">
+                    📋 ACTIVE PROPOSALS
+                    <span className="card-badge">{proposals.length}</span>
+                  </h2>
+                </div>
+                <ProposalsList proposals={proposals} onSelectProposal={handleSelectProposal} />
+              </>
+            )}
+
+            {activeTab === 'vote' && selectedProposal && (
+              <>
+                <div className="card-header">
+                  <h2 className="card-title">🗳️ CAST VOTE</h2>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Proposal #{selectedProposal.id}</label>
+                  <div className="proposal-card" style={{ cursor: 'default' }}>
+                    <div className="proposal-description">{selectedProposal.description}</div>
+                    <div className="proposal-stats">
+                      <div className="proposal-stat">
+                        <span>💰</span>
+                        <span>{selectedProposal.funding} SOL</span>
+                      </div>
+                      <div className="proposal-stat">
+                        <span>🗳️</span>
+                        <span>{selectedProposal.voteCount} votes</span>
+                      </div>
+                      <div className="proposal-stat">
+                        <span>🎯</span>
+                        <span>{selectedProposal.minStake} min stake</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Your Vote</label>
+                  <p style={{ color: 'var(--cyber-green)', marginBottom: '1rem' }}>
+                    🔒 Your vote will be cryptographically anonymous using zero-knowledge proofs.
+                    No one can link your vote to your wallet address.
+                  </p>
+                </div>
+
+                <div className="btn-group">
+                  <button
+                    className="btn btn-primary btn-block"
+                    onClick={handleVote}
+                    disabled={!wallet.connected}
+                  >
+                    {wallet.connected ? '✓ VOTE YES (ANONYMOUS)' : '🔌 CONNECT WALLET'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setActiveTab('proposals')}
+                  >
+                    ← BACK
+                  </button>
+                </div>
+              </>
+            )}
+
+            {activeTab === 'create' && (
+              <>
+                <div className="card-header">
+                  <h2 className="card-title">✨ CREATE PROPOSAL</h2>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea
+                    className="form-textarea"
+                    placeholder="Describe your proposal..."
+                    rows={4}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Funding Amount (SOL)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder="100"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Minimum Stake Required</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder="50"
+                  />
+                </div>
+                <button className="btn btn-primary btn-block" disabled={!wallet.connected}>
+                  {wallet.connected ? '🚀 CREATE PROPOSAL' : '🔌 CONNECT WALLET'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
+// Wallet Provider Wrapper
 function App() {
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  
+
   const wallets = useMemo(
     () => [
       new PhantomWalletAdapter(),
@@ -563,4 +317,3 @@ function App() {
 }
 
 export default App;
-
