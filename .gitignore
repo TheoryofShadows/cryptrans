@@ -1,0 +1,49 @@
+# Anchor
+.anchor
+.DS_Store
+target
+**/*.rs.bk
+node_modules
+test-ledger
+
+# IDL (will be generated)
+!app/src/idl/
+
+# Environment
+.env
+.env.local
+
+# Frontend
+app/node_modules
+app/build
+app/.env
+
+# Wallet keys (NEVER commit these!)
+*.json
+!tsconfig.json
+!package.json
+!package-lock.json
+!Anchor.toml
+!app/src/idl/*.json
+!zkproof/verification_key.json
+
+# ZK Proof artifacts (large files - download separately)
+**/*.ptau
+**/*.zkey
+**/*.r1cs
+**/*.sym
+**/vote_js/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+

@@ -1,0 +1,575 @@
+{
+  "address": "B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK",
+  "metadata": {
+    "name": "cryptrans",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "CrypTrans: Embodying Cypherpunk and Extropian Visions"
+  },
+  "instructions": [
+    {
+      "name": "apply_demurrage",
+      "docs": [
+        "Apply demurrage (ethical decay to prevent hoarding)"
+      ],
+      "discriminator": [
+        142,
+        198,
+        178,
+        111,
+        241,
+        181,
+        206,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "stake",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "demurrage_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_proposal",
+      "docs": [
+        "Create a proposal with PoW anti-spam protection"
+      ],
+      "discriminator": [
+        132,
+        116,
+        68,
+        174,
+        216,
+        160,
+        198,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "proposal"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        }
+      ],
+      "args": [
+        {
+          "name": "id",
+          "type": "u64"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "funding_needed",
+          "type": "u64"
+        },
+        {
+          "name": "pow_hash",
+          "type": "string"
+        },
+        {
+          "name": "pow_difficulty",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "initialize_stake",
+      "docs": [
+        "Initialize a user's stake account"
+      ],
+      "discriminator": [
+        33,
+        175,
+        216,
+        4,
+        116,
+        130,
+        164,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "stake",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "release_funds",
+      "docs": [
+        "Release funds if voting threshold is met"
+      ],
+      "discriminator": [
+        225,
+        88,
+        91,
+        108,
+        126,
+        52,
+        2,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  111,
+                  115,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "proposal.id",
+                "account": "Proposal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "recipient",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "stake_tokens",
+      "docs": [
+        "Stake tokens to participate in governance"
+      ],
+      "discriminator": [
+        136,
+        126,
+        91,
+        162,
+        40,
+        131,
+        13,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "stake",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_token_account",
+          "writable": true
+        },
+        {
+          "name": "stake_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "vote",
+      "docs": [
+        "Vote on a proposal with ZK proof for privacy"
+      ],
+      "discriminator": [
+        227,
+        110,
+        155,
+        23,
+        136,
+        126,
+        172,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "proposal",
+          "writable": true
+        },
+        {
+          "name": "stake",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  116,
+                  97,
+                  107,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "voter"
+              }
+            ]
+          }
+        },
+        {
+          "name": "voter",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "zk_proof",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Proposal",
+      "discriminator": [
+        26,
+        94,
+        189,
+        187,
+        116,
+        136,
+        53,
+        33
+      ]
+    },
+    {
+      "name": "Stake",
+      "discriminator": [
+        150,
+        197,
+        176,
+        29,
+        55,
+        132,
+        112,
+        149
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InsufficientVotes",
+      "msg": "Insufficient votes to release funds"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidPoW",
+      "msg": "Invalid Proof of Work - hash doesn't meet difficulty requirement"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidZKProof",
+      "msg": "Invalid Zero-Knowledge Proof"
+    },
+    {
+      "code": 6003,
+      "name": "AlreadyFunded",
+      "msg": "Proposal already funded"
+    }
+  ],
+  "types": [
+    {
+      "name": "Proposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "funding_needed",
+            "type": "u64"
+          },
+          {
+            "name": "votes",
+            "type": "u64"
+          },
+          {
+            "name": "funded",
+            "type": "bool"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "pow_hash",
+            "type": "string"
+          },
+          {
+            "name": "created_at",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Stake",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "last_demurrage",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

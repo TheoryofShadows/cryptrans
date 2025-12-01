@@ -1,0 +1,232 @@
+.app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #000000 0%, #001a1a 50%, #000033 100%);
+  color: #00ffff;
+  padding: 20px;
+}
+
+header {
+  text-align: center;
+  padding: 40px 20px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 15px;
+  margin-bottom: 40px;
+  border: 2px solid #00ffff;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+}
+
+h1 {
+  font-size: 3.5em;
+  margin: 0;
+  text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  from {
+    text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff, 0 0 30px #00ffff;
+  }
+  to {
+    text-shadow: 0 0 20px #00ffff, 0 0 30px #00ffff, 0 0 40px #00ff88;
+  }
+}
+
+.subtitle {
+  font-size: 1.2em;
+  margin: 10px 0 20px;
+  color: #00ff88;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.card {
+  background: rgba(0, 30, 30, 0.8);
+  border: 2px solid #00ffff;
+  border-radius: 10px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: 0 5px 25px rgba(0, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+h2 {
+  color: #00ffff;
+  margin-bottom: 20px;
+  font-size: 1.8em;
+  text-shadow: 0 0 10px #00ffff;
+}
+
+.hint {
+  color: #00ff88;
+  font-style: italic;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(0, 255, 136, 0.1);
+  border-left: 3px solid #00ff88;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 15px;
+  margin: 10px 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid #00ffff;
+  border-radius: 8px;
+  color: #00ffff;
+  font-family: 'Courier New', monospace;
+  font-size: 1em;
+  transition: all 0.3s;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: #00ff88;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(0, 255, 255, 0.5);
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 15px 0;
+}
+
+button {
+  padding: 15px 30px;
+  font-size: 1.1em;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #00ffff 0%, #00ff88 100%);
+  color: #000;
+  border: 2px solid transparent;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #00ff88 0%, #00ffff 100%);
+  box-shadow: 0 5px 20px rgba(0, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #00ffff;
+  border: 2px solid #00ffff;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: 0 5px 20px rgba(0, 255, 255, 0.3);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pow-section {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 15px 0;
+}
+
+.checkmark {
+  color: #00ff88;
+  font-size: 1.2em;
+  font-weight: bold;
+  animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.status-bar {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid #00ffff;
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 400px;
+  box-shadow: 0 5px 30px rgba(0, 255, 255, 0.5);
+  animation: slideIn 0.3s;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.status-bar p {
+  margin: 0;
+  color: #00ff88;
+}
+
+.manifesto {
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid #00ff88;
+  border-radius: 10px;
+  padding: 30px;
+  margin-top: 40px;
+}
+
+.manifesto h3 {
+  color: #00ff88;
+  text-align: center;
+  font-size: 2em;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px #00ff88;
+}
+
+.manifesto ul {
+  list-style: none;
+  padding: 0;
+}
+
+.manifesto li {
+  padding: 12px;
+  margin: 10px 0;
+  background: rgba(0, 255, 136, 0.05);
+  border-left: 4px solid #00ff88;
+  font-size: 1.1em;
+  transition: all 0.3s;
+}
+
+.manifesto li:hover {
+  background: rgba(0, 255, 136, 0.15);
+  transform: translateX(10px);
+}
+
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2.5em;
+  }
+  
+  .input-group {
+    flex-direction: column;
+  }
+  
+  button {
+    width: 100%;
+  }
+}
+

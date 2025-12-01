@@ -1,0 +1,41 @@
+{
+  "name": "cryptrans",
+  "version": "0.1.0",
+  "description": "CrypTrans: Embodying Cypherpunk and Extropian Visions",
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "deploy": "anchor deploy",
+    "deploy:devnet": "anchor deploy --provider.cluster devnet",
+    "deploy:mainnet": "anchor deploy --provider.cluster mainnet",
+    "localnet": "solana-test-validator",
+    "copy-idl": "node scripts/copy-idl.js",
+    "setup": "node scripts/setup.js"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@solana/spl-token": "^0.4.1",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.0.0",
+    "chai": "^4.3.10",
+    "mocha": "^10.2.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/cryptrans.git"
+  },
+  "keywords": [
+    "solana",
+    "blockchain",
+    "cypherpunk",
+    "extropian",
+    "governance",
+    "defi",
+    "web3"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
+
