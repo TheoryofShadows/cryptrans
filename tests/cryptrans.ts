@@ -24,8 +24,18 @@ import { assert, expect } from "chai";
 import * as crypto from "crypto";
 
 describe("cryptrans", () => {
-  // Configure the client to use the local cluster.
-  const provider = anchor.AnchorProvider.env();
+  // Configure the client to use Helius RPC for better rate limits
+  const HELIUS_API_KEY = "42c3b752-f0d6-4731-9048-19d60b366e30";
+  const connection = new anchor.web3.Connection(
+    `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
+    "confirmed"
+  );
+
+  const provider = new anchor.AnchorProvider(
+    connection,
+    anchor.AnchorProvider.env().wallet,
+    { commitment: "confirmed" }
+  );
   anchor.setProvider(provider);
 
   const program = anchor.workspace.Cryptrans as Program<Cryptrans>;
