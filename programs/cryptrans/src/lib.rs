@@ -7,13 +7,13 @@ mod groth16_verifier;
 mod oracle;
 mod tranche;
 
-use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType, AccuracyTier, OracleReputationToken};
+use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType, AccuracyTier};
 use tranche::{
-    ProjectProposed, TrancheReleased, TrancheReleaseProposed, ProjectCompleted, TranhumanProject, Tranche,
+    ProjectProposed, TrancheReleased, TrancheReleaseProposed, TranhumanProject, Tranche,
     TrancheReleaseProposal, TrancheVoteStatus, TrancheVoteType,
 };
 
-declare_id!("B346Vx1KonmcvcHrXq6ukyNBKVTZKpmB79LESakd6ALB");
+declare_id!("57wFcRcKLeU2WuUbadwXR56TtdgijAFQX8X73PqDURVn");
 
 /// Helper struct for creating tranches in propose_transhuman_project
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -1133,7 +1133,9 @@ pub struct InitializeConfig<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + 32 + 8 + 8 + 8 + 4
+        space = 8 + 32 + 8 + 8 + 8 + 4,
+        seeds = [b"config"],
+        bump
     )]
     pub config: Account<'info, GlobalConfig>,
     #[account(mut)]

@@ -14,7 +14,6 @@
 /// When the world proves you succeeded, the contract executes automatically."
 
 use anchor_lang::prelude::*;
-use crate::oracle::Milestone;
 
 /// Status of a transhuman project
 #[derive(Clone, Debug, AnchorSerialize, AnchorDeserialize, PartialEq, Eq)]
