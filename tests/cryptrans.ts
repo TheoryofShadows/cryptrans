@@ -18,6 +18,7 @@ import {
   getAccount,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
+  getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
 import { assert, expect } from "chai";
 import * as crypto from "crypto";
@@ -613,13 +614,14 @@ describe("cryptrans", () => {
         1_000_000_000 // 1 token
       );
 
-      // Create recipient token account
-      const recipient = await createAccount(
+      // Create recipient token account (use getOrCreate for compatibility)
+      const recipientAccount = await getOrCreateAssociatedTokenAccount(
         provider.connection,
         payer,
         mint,
         payer.publicKey
       );
+      const recipient = recipientAccount.address;
 
       // Manually set proposal votes to meet threshold (this is for testing)
       // In production, you'd need enough real votes
@@ -664,12 +666,13 @@ describe("cryptrans", () => {
     });
 
     it("Prevents double funding", async () => {
-      const recipient = await createAccount(
+      const recipientAccount = await getOrCreateAssociatedTokenAccount(
         provider.connection,
         payer,
         mint,
         payer.publicKey
       );
+      const recipient = recipientAccount.address;
 
       try {
         await program.methods
