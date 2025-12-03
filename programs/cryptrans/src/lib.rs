@@ -131,7 +131,16 @@ pub mod cryptrans {
         Ok(())
     }
 
-    /// Vote on a proposal with REAL ZK proof for privacy
+    /// ❌ DEPRECATED - QUANTUM-VULNERABLE: Uses Groth16 (elliptic curve pairings)
+    /// Use vote_with_stark() instead for quantum-safe anonymous voting
+    ///
+    /// This function uses Groth16 ZK-SNARKs which rely on BLS12-381 elliptic curve pairings.
+    /// Quantum computers can break elliptic curves via Shor's algorithm.
+    /// Keeping for backward compatibility but marked as insecure.
+    #[deprecated(
+        since = "0.2.0",
+        note = "QUANTUM-VULNERABLE! Use vote_with_stark() for quantum-safe voting"
+    )]
     pub fn vote_with_zk(
         ctx: Context<Vote>,
         nullifier: [u8; 32],
