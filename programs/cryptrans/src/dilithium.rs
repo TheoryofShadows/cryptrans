@@ -48,14 +48,19 @@ pub const DILITHIUM_SIGNATURE_BYTES: usize = 3293;
 /// For now, this is a placeholder that returns true if signature is non-zero.
 /// Full implementation will verify Bonsol execution account.
 pub fn verify_dilithium_signature(
-    message: &[u8],
-    signature: &[u8; DILITHIUM_SIGNATURE_BYTES],
-    public_key: &[u8; DILITHIUM_PUBLICKEY_BYTES],
+    _message: &[u8],
+    signature: &[u8],
+    _public_key: &[u8],
 ) -> Result<bool> {
     // TODO: Verify Bonsol execution account contains valid STARK proof
     // For now: Basic sanity check (signature is non-zero)
 
     // Check signature is not all zeros (basic sanity)
+    // Basic sanity checks: length and non-zero
+    if signature.len() != DILITHIUM_SIGNATURE_BYTES {
+        return Ok(false);
+    }
+
     let is_zero = signature.iter().all(|&b| b == 0);
 
     if is_zero {
@@ -90,17 +95,17 @@ pub fn verify_dilithium_signature(
 /// * `Ok(true)` if both signatures valid
 /// * Err if verification fails
 pub fn verify_hybrid_signature(
-    message: &[u8],
-    eddsa_signer: &Pubkey,
-    dilithium_signature: &[u8; DILITHIUM_SIGNATURE_BYTES],
-    dilithium_pubkey: &[u8; DILITHIUM_PUBLICKEY_BYTES],
+    _message: &[u8],
+    _eddsa_signer: &Pubkey,
+    dilithium_signature: &[u8],
+    dilithium_pubkey: &[u8],
 ) -> Result<bool> {
     // 1. EdDSA verification is implicit - if we got here, Solana verified the tx signature
     let eddsa_valid = true;
 
     // 2. Verify Dilithium via Bonsol (or placeholder for now)
     let dilithium_valid = verify_dilithium_signature(
-        message,
+        _message,
         dilithium_signature,
         dilithium_pubkey,
     )?;

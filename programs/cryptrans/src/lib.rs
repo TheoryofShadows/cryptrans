@@ -145,9 +145,9 @@ pub mod cryptrans {
         ctx: Context<Vote>,
         nullifier: [u8; 32],
         commitment: [u8; 32],
-        proof_a: [u8; 64],
-        proof_b: [u8; 128],
-        proof_c: [u8; 64],
+        proof_a: Vec<u8>,
+        proof_b: Vec<u8>,
+        proof_c: Vec<u8>,
     ) -> Result<()> {
         let current_time = Clock::get()?.unix_timestamp as u64;
 
@@ -158,10 +158,11 @@ pub mod cryptrans {
         // ===== Step 1: Verify ZK Proof Using Groth16 Verifier =====
         // Verify proof structure and validate that proof elements are non-zero
         let min_stake = [0u8; 32]; // Will be extracted from commitment in circuit
+        // Use heap-allocated Vecs to avoid large stack-frame copies
         let proof_valid = groth16_verifier::verify_proof_structure(
-            &proof_a,
-            &proof_b,
-            &proof_c,
+            proof_a.as_slice(),
+            proof_b.as_slice(),
+            proof_c.as_slice(),
             &nullifier,
             &commitment,
             &min_stake,
@@ -376,15 +377,11 @@ pub mod cryptrans {
             ErrorCode::InvalidDilithiumSignature
         );
 
-        // Convert Vec to fixed array for verification
-        let mut sig_array = [0u8; dilithium::DILITHIUM_SIGNATURE_BYTES];
-        sig_array.copy_from_slice(&dilithium_signature);
-
-        // Verify hybrid EdDSA + Dilithium signature
+        // Avoid copying the entire signature to the stack: pass as slice
         let is_valid = dilithium::verify_hybrid_signature(
             &message,
             &ctx.accounts.quantum_admin.authority,
-            &sig_array,
+            &dilithium_signature,
             &ctx.accounts.quantum_admin.dilithium_pubkey,
         )?;
 
@@ -956,7 +953,7 @@ pub mod cryptrans {
         );
 
         // Extract values before mutable borrow
-        let (stored_oracle_pubkey, current_collateral, current_reputation, current_failed) = {
+        let (stored_oracle_pubkey, current_collateral, current_reputation, _current_failed) = {
             let registry = &ctx.accounts.oracle_registry;
             require!(registry.collateral > 0, ErrorCode::OracleNotRegistered);
 
@@ -1513,6 +1510,7 @@ pub struct QuantumAdmin {
 // Helper Functions
 
 /// Check if byte array is all zeros
+#[allow(dead_code)]
 fn is_zero_bytes(bytes: &[u8]) -> bool {
     bytes.iter().all(|&b| b == 0)
 }

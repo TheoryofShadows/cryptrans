@@ -7,12 +7,14 @@ use anchor_lang::prelude::*;
 
 /// Bonsol program ID (mainnet/devnet)
 /// TODO: Update with actual Bonsol program ID when deploying
+#[allow(dead_code)]
 pub const BONSOL_PROGRAM_ID: Pubkey = Pubkey::new_from_array([0u8; 32]);
 
 /// RISC Zero image ID for the voting circuit
 /// This is the SHA-256 hash of the compiled guest program (bonsol-guest/src/main.rs)
 /// Binary hash: 2bcf48fc03156687af1019e50e30731e5182211300a64e9e4b346af0bc89ce95
 /// Generated: 2025-12-03
+#[allow(dead_code)]
 pub const VOTING_IMAGE_ID: [u8; 32] = [
     0x2b, 0xcf, 0x48, 0xfc, 0x03, 0x15, 0x66, 0x87,
     0xaf, 0x10, 0x19, 0xe5, 0x0e, 0x30, 0x73, 0x1e,

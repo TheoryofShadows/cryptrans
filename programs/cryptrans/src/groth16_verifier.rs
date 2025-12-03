@@ -14,13 +14,21 @@
 /// 2. Proof elements are valid field/curve elements
 /// 3. Public signals match expected circuit outputs
 pub fn verify_proof_structure(
-    proof_a: &[u8; 64],
-    proof_b: &[u8; 128],
-    proof_c: &[u8; 64],
-    nullifier: &[u8; 32],
-    commitment: &[u8; 32],
-    _min_stake: &[u8; 32],
+    proof_a: &[u8],
+    proof_b: &[u8],
+    proof_c: &[u8],
+    nullifier: &[u8],
+    commitment: &[u8],
+    _min_stake: &[u8],
 ) -> bool {
+    // Check expected lengths to avoid malformed inputs
+    if proof_a.len() != 64 || proof_b.len() != 128 || proof_c.len() != 64 {
+        return false;
+    }
+    if nullifier.len() != 32 || commitment.len() != 32 {
+        return false;
+    }
+
     // Check proof components are non-zero
     let is_proof_a_zero = proof_a.iter().all(|&b| b == 0);
     let is_proof_b_zero = proof_b.iter().all(|&b| b == 0);
