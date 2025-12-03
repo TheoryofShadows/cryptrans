@@ -1,0 +1,53 @@
+name: Anchor CI - Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run anchor test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Solana CLI
+        run: |
+          set -e
+          curl -sSfL https://release.solana.com/v1.18.26/install | sh || wget -qO- https://release.solana.com/v1.18.26/install | sh
+          echo "::add-path::${HOME}/.local/share/solana/install/active_release/bin"
+          solana --version
+
+      - name: Install Anchor CLI
+        run: |
+          npm ci --no-audit --no-fund || true
+          npm install -g @coral-xyz/anchor@0.30.1 --unsafe-perm=true
+          anchor --version || true
+
+      - name: Install npm dependencies (root)
+        run: |
+          npm ci --legacy-peer-deps
+
+      - name: Run anchor test
+        env:
+          CI: true
+        run: |
+          # Run tests from repo root. Anchor will build programs and run tests.
+          anchor test --skip-build || anchor test
