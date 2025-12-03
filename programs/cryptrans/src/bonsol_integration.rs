@@ -10,9 +10,15 @@ use anchor_lang::prelude::*;
 pub const BONSOL_PROGRAM_ID: Pubkey = Pubkey::new_from_array([0u8; 32]);
 
 /// RISC Zero image ID for the voting circuit
-/// This is the hash of the compiled guest program (bonsol-guest/src/main.rs)
-/// Generated after building the RISC Zero program
-pub const VOTING_IMAGE_ID: [u8; 32] = [0u8; 32]; // TODO: Update after building guest program
+/// This is the SHA-256 hash of the compiled guest program (bonsol-guest/src/main.rs)
+/// Binary hash: 2bcf48fc03156687af1019e50e30731e5182211300a64e9e4b346af0bc89ce95
+/// Generated: 2025-12-03
+pub const VOTING_IMAGE_ID: [u8; 32] = [
+    0x2b, 0xcf, 0x48, 0xfc, 0x03, 0x15, 0x66, 0x87,
+    0xaf, 0x10, 0x19, 0xe5, 0x0e, 0x30, 0x73, 0x1e,
+    0x51, 0x82, 0x21, 0x13, 0x00, 0xa6, 0x4e, 0x9e,
+    0x4b, 0x34, 0x6a, 0xf0, 0xbc, 0x89, 0xce, 0x95,
+];
 
 /// Account structure for Bonsol execution verification
 #[account]

@@ -1,6 +1,6 @@
 # CrypTrans
 
-**The First Quantum-Safe, Privacy-Preserving DAO on Solana**
+**The First Quantum-Ready, Privacy-Preserving DAO on Solana**
 
 CrypTrans embodies cypherpunk and Extropian visions for funding transhuman projects: cryonics, whole-brain emulation, asteroid mining, and von Neumann probes.
 
@@ -26,11 +26,12 @@ We fund humanity's most ambitious projects with quantum-safe, unstoppable govern
 
 ## ✨ Features
 
-### 🔐 Quantum-Safe (STARK + Dilithium)
-- **RISC Zero STARK proofs** - Hash-based, quantum-resistant ZK voting
-- **Bonsol integration** - Wraps STARK in Groth16 for efficient on-chain verification
-- **CRYSTALS-Dilithium** - Post-quantum signatures (NIST-approved ML-DSA)
-- **First quantum-safe DAO on Solana** 🏆
+### 🔐 Quantum-Ready (Building Toward Full Quantum-Safety)
+- **SHA-256 PoW** - Quantum-resistant anti-spam (✅ PRODUCTION)
+- **RISC Zero STARK proofs** - Hash-based ZK voting (✅ BUILT, deploying soon)
+- **Bonsol integration** - STARK proof verification (✅ CODE COMPLETE)
+- **CRYSTALS-Dilithium** - Post-quantum signatures (🔲 PLANNED)
+- **First quantum-ready DAO on Solana** - See [QUANTUM_SAFE_STATUS.md](docs/QUANTUM_SAFE_STATUS.md) 🏆
 
 ### 🗳️ Anonymous Voting (Zero-Knowledge)
 - **ZK-SNARKs** - Vote without revealing identity
@@ -69,10 +70,17 @@ We fund humanity's most ambitious projects with quantum-safe, unstoppable govern
 - Treasury threshold governance
 - Helius RPC integration
 
-### In Progress 🔲
-- Bonsol STARK integration (quantum-safe!)
-- CRYSTALS-Dilithium signatures
-- Production API deployment
+### Quantum-Safe Progress 🔐
+- ✅ SHA-256 PoW (quantum-resistant now!)
+- ✅ RISC Zero guest program built
+- ✅ `vote_with_stark()` instruction added
+- 🔲 Bonsol deployment (1-2 days)
+- 🔲 CRYSTALS-Dilithium integration (3-5 days)
+- 🔲 Full quantum-safe (Q1 2026 target)
+
+### Other Work In Progress 🔲
+- Production API routes (7 routes needed)
+- Frontend components (15+ components)
 - TypeScript SDK
 - MPC ceremony (trusted setup)
 - Security audit (Trail of Bits/OtterSec)

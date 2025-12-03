@@ -16,26 +16,8 @@ use sha2::{Sha256, Digest};
 
 risc0_zkvm::guest::entry!(main);
 
-/// Vote choice: false = No, true = Yes
-#[derive(Debug)]
-struct Vote {
-    choice: bool,
-}
-
-/// Public inputs (visible on-chain)
-#[derive(Debug)]
-struct PublicInputs {
-    proposal_id: [u8; 32],
-    commitment: [u8; 32],
-    nullifier: [u8; 32],
-}
-
-/// Private inputs (secret, never revealed)
-#[derive(Debug)]
-struct PrivateInputs {
-    secret: [u8; 32],
-    vote: Vote,
-}
+// Note: Unused structs removed to eliminate warnings
+// In production, these could be used for typed inputs/outputs
 
 pub fn main() {
     // Read private inputs from zkVM host
@@ -47,9 +29,6 @@ pub fn main() {
 
     // Validate vote choice (must be 0 or 1)
     assert!(vote_choice == 0 || vote_choice == 1, "Invalid vote choice");
-    let vote = Vote {
-        choice: vote_choice == 1,
-    };
 
     // Compute commitment: SHA256(secret)
     let mut hasher = Sha256::new();

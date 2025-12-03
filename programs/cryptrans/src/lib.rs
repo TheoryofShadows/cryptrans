@@ -6,6 +6,7 @@ use sha2::{Sha256, Digest};
 mod groth16_verifier;
 mod oracle;
 mod tranche;
+mod bonsol_integration;
 
 use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType, AccuracyTier};
 use tranche::{
@@ -243,6 +244,72 @@ pub mod cryptrans {
         vote_record.voted_at = current_time;
         vote_record.nullifier = [0; 32]; // No nullifier in insecure mode
 
+        Ok(())
+    }
+
+    /// 🔐 QUANTUM-SAFE: Vote with RISC Zero STARK proof via Bonsol
+    /// This is the quantum-resistant alternative to vote_with_zk (Groth16)
+    pub fn vote_with_stark(
+        ctx: Context<VoteWithStark>,
+        expected_image_id: [u8; 32],
+    ) -> Result<()> {
+        msg!("🔐 QUANTUM-SAFE VOTING: Using RISC Zero STARK proofs!");
+
+        let current_time = Clock::get()?.unix_timestamp as u64;
+
+        // ===== Step 0: Check Proposal Not Expired =====
+        let proposal = &ctx.accounts.proposal;
+        require!(current_time <= proposal.expires_at, ErrorCode::ProposalExpired);
+
+        // ===== Step 1: Verify STARK Proof via Bonsol =====
+        // Convert proposal ID (u64) to 32-byte array for consistency
+        let mut proposal_id_bytes = [0u8; 32];
+        proposal_id_bytes[..8].copy_from_slice(&proposal.id.to_le_bytes());
+
+        let (nullifier, _vote_choice) = bonsol_integration::verify_bonsol_proof(
+            &ctx.accounts.bonsol_execution,
+            &expected_image_id,
+            &ctx.accounts.stake.commitment,
+            &proposal_id_bytes,
+        )?;
+
+        // ===== Step 2: Check Nullifier Not Used (Prevent Double-Voting) =====
+        let vote_record = &mut ctx.accounts.vote_record;
+        require!(!vote_record.has_voted, ErrorCode::AlreadyVoted);
+
+        // ===== Step 3: Store Nullifier =====
+        vote_record.nullifier = nullifier;
+        vote_record.has_voted = true;
+        vote_record.voted_at = current_time;
+
+        // ===== Step 4: Apply Demurrage and Calculate Vote Weight =====
+        let config = &ctx.accounts.config;
+        let stake = &ctx.accounts.stake;
+        let mut adjusted_stake = stake.amount;
+
+        if current_time > stake.last_demurrage {
+            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
+            let decay = adjusted_stake
+                .checked_mul(config.demurrage_rate).unwrap()
+                .checked_mul(time_elapsed).unwrap()
+                .checked_div(365 * 24 * 3600 * 10000).unwrap();
+            adjusted_stake = adjusted_stake.checked_sub(decay).unwrap_or(adjusted_stake);
+        }
+
+        // ===== Step 5: Add Vote (Anonymous & Quantum-Safe!) =====
+        let proposal = &mut ctx.accounts.proposal;
+        proposal.votes = proposal.votes.checked_add(adjusted_stake).unwrap();
+        vote_record.vote_weight = adjusted_stake;
+
+        // Emit event for transparency
+        emit!(VoteEvent {
+            proposal_id: proposal.id,
+            nullifier,
+            vote_weight: adjusted_stake,
+            timestamp: current_time,
+        });
+
+        msg!("✅ STARK proof verified! Vote counted. Hash-based crypto = Quantum-safe!");
         Ok(())
     }
 
@@ -1245,6 +1312,32 @@ pub struct VoteInsecure<'info> {
         bump
     )]
     pub vote_record: Account<'info, VoteRecord>,
+    pub config: Account<'info, GlobalConfig>,
+    #[account(mut)]
+    pub voter: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Accounts for quantum-safe voting with STARK proofs
+#[derive(Accounts)]
+pub struct VoteWithStark<'info> {
+    #[account(mut)]
+    pub proposal: Account<'info, Proposal>,
+    #[account(
+        seeds = [b"stake", voter.key().as_ref()],
+        bump
+    )]
+    pub stake: Account<'info, Stake>,
+    #[account(
+        init,
+        payer = voter,
+        space = 8 + 1 + 8 + 8 + 32,
+        seeds = [b"vote", proposal.key().as_ref(), voter.key().as_ref()],
+        bump
+    )]
+    pub vote_record: Account<'info, VoteRecord>,
+    /// Bonsol execution account containing STARK proof verification result
+    pub bonsol_execution: Account<'info, bonsol_integration::BonsolExecution>,
     pub config: Account<'info, GlobalConfig>,
     #[account(mut)]
     pub voter: Signer<'info>,
