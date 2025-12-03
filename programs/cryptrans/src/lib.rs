@@ -7,6 +7,7 @@ mod groth16_verifier;
 mod oracle;
 mod tranche;
 mod bonsol_integration;
+mod dilithium;
 
 use oracle::{AlignmentScore, AlignmentTier, Milestone, OracleAttestation, MilestoneVerificationType, AccuracyTier};
 use tranche::{
@@ -348,6 +349,70 @@ pub mod cryptrans {
 
         // Mark as funded
         ctx.accounts.proposal.funded = true;
+        Ok(())
+    }
+
+    /// 🔐 QUANTUM-SAFE: Release treasury funds with Dilithium post-quantum signature
+    /// Requires hybrid EdDSA + Dilithium verification for quantum resistance
+    pub fn release_funds_quantum_safe(
+        ctx: Context<ReleaseFundsQuantumSafe>,
+        dilithium_signature: Vec<u8>,
+        message: Vec<u8>,
+    ) -> Result<()> {
+        msg!("🔐 QUANTUM-SAFE TREASURY RELEASE: Verifying Dilithium signature");
+
+        // Verify signature is correct length
+        require!(
+            dilithium_signature.len() == dilithium::DILITHIUM_SIGNATURE_BYTES,
+            ErrorCode::InvalidDilithiumSignature
+        );
+
+        // Convert Vec to fixed array for verification
+        let mut sig_array = [0u8; dilithium::DILITHIUM_SIGNATURE_BYTES];
+        sig_array.copy_from_slice(&dilithium_signature);
+
+        // Verify hybrid EdDSA + Dilithium signature
+        let is_valid = dilithium::verify_hybrid_signature(
+            &message,
+            &ctx.accounts.quantum_admin.authority,
+            &sig_array,
+            &ctx.accounts.quantum_admin.dilithium_pubkey,
+        )?;
+
+        require!(is_valid, ErrorCode::QuantumSignatureInvalid);
+
+        // === Same logic as release_funds ===
+        let config = &ctx.accounts.config;
+        require!(ctx.accounts.proposal.votes >= config.voting_threshold, ErrorCode::InsufficientVotes);
+        require!(!ctx.accounts.proposal.funded, ErrorCode::AlreadyFunded);
+
+        let treasury = &ctx.accounts.treasury;
+        let funding_amount = ctx.accounts.proposal.funding_needed;
+        require!(treasury.amount >= funding_amount, ErrorCode::InsufficientTreasuryBalance);
+
+        let proposal_id = ctx.accounts.proposal.id;
+
+        // Transfer funds from treasury to recipient
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.treasury.to_account_info(),
+            to: ctx.accounts.recipient.to_account_info(),
+            authority: ctx.accounts.proposal.to_account_info(),
+        };
+
+        let seeds = &[
+            b"proposal",
+            &proposal_id.to_le_bytes()[..],
+            &[ctx.bumps.proposal],
+        ];
+        let signer = &[&seeds[..]];
+
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+        token::transfer(cpi_ctx, funding_amount)?;
+
+        ctx.accounts.proposal.funded = true;
+
+        msg!("✅ Quantum-safe signature verified! Funds released with post-quantum security!");
         Ok(())
     }
 
@@ -1360,6 +1425,27 @@ pub struct ReleaseFunds<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Accounts for quantum-safe treasury release with Dilithium
+#[derive(Accounts)]
+pub struct ReleaseFundsQuantumSafe<'info> {
+    #[account(
+        mut,
+        seeds = [b"proposal", proposal.id.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub proposal: Account<'info, Proposal>,
+    #[account(mut)]
+    pub treasury: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub recipient: Account<'info, TokenAccount>,
+    pub config: Account<'info, GlobalConfig>,
+    /// Quantum-safe admin account with Dilithium pubkey
+    pub quantum_admin: Account<'info, QuantumAdmin>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
 // Data Structures
 
 #[account]
@@ -1399,6 +1485,18 @@ pub struct GlobalConfig {
     pub demurrage_rate: u64,
     pub proposal_duration_seconds: u64,
     pub pow_difficulty: u32,
+}
+
+/// 🔐 QUANTUM-SAFE: Admin account with post-quantum Dilithium signature
+/// Provides quantum resistance for critical treasury operations
+#[account]
+pub struct QuantumAdmin {
+    /// Traditional Solana wallet (EdDSA)
+    pub authority: Pubkey,
+    /// Post-quantum Dilithium public key (1952 bytes for Dilithium3)
+    pub dilithium_pubkey: [u8; dilithium::DILITHIUM_PUBLICKEY_BYTES],
+    /// Creation timestamp
+    pub created_at: i64,
 }
 
 // Error Codes
@@ -1586,6 +1684,11 @@ pub enum ErrorCode {
     InsufficientOracleCollateral,
     #[msg("Oracle is not registered")]
     OracleNotRegistered,
+    // Quantum-safe error codes
+    #[msg("Invalid Dilithium signature length")]
+    InvalidDilithiumSignature,
+    #[msg("Quantum signature verification failed - post-quantum signature invalid")]
+    QuantumSignatureInvalid,
 }
 
 // Account Contexts for Oracle Operations

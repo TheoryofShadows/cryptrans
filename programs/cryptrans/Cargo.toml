@@ -21,3 +21,5 @@ anchor-lang = "0.30.1"
 anchor-spl = { version = "0.30.1", features = ["associated_token"] }
 sha2 = "0.10.8"
 hex = "0.4.3"
+# Quantum-safe post-quantum signatures (NIST FIPS 204 / ML-DSA / CRYSTALS-Dilithium)
+pqcrypto-dilithium = "0.5"
