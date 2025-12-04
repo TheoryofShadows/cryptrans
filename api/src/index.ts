@@ -5,6 +5,7 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
+import { validateJson } from './middleware/validation';
 
 // Routes
 import authRoutes from './routes/auth';
@@ -24,6 +25,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use(validateJson);
 app.use(rateLimiter);
 
 // Health check

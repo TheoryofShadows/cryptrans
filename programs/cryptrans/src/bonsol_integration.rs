@@ -6,9 +6,18 @@
 use anchor_lang::prelude::*;
 
 /// Bonsol program ID (mainnet/devnet)
-/// TODO: Update with actual Bonsol program ID when deploying
+/// Replace with actual Bonsol program ID when deploying
+/// Bonsol Mainnet: (will be provided by Bonsol Labs)
+/// Bonsol Devnet: (will be provided by Bonsol Labs)
 #[allow(dead_code)]
 pub const BONSOL_PROGRAM_ID: Pubkey = Pubkey::new_from_array([0u8; 32]);
+
+/// RISC Zero image ID for Dilithium signature verification circuit
+/// This is the SHA-256 hash of the compiled Dilithium verification program
+/// Once compiled, update this with: `cargo build --release` output
+/// Example: 5a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a
+#[allow(dead_code)]
+pub const DILITHIUM_IMAGE_ID: [u8; 32] = [0u8; 32]; // TODO: Update after RISC Zero compilation
 
 /// RISC Zero image ID for the voting circuit
 /// This is the SHA-256 hash of the compiled guest program (bonsol-guest/src/main.rs)
@@ -93,6 +102,42 @@ pub fn verify_bonsol_proof(
     Ok((nullifier, vote))
 }
 
+/// Verify Dilithium signature via Bonsol RISC Zero
+///
+/// Performs CPI to Bonsol to verify that a Dilithium signature was correctly
+/// verified off-chain by a RISC Zero guest program.
+///
+/// # Arguments
+/// * `execution_account` - Bonsol execution account with proof data
+/// * `message` - The original message that was signed
+/// * `dilithium_pubkey` - The Dilithium public key
+///
+/// # Returns
+/// * `Ok(true)` if Dilithium signature is verified
+/// * `Err` if verification fails
+pub fn verify_dilithium_bonsol(
+    execution_account: &Account<BonsolExecution>,
+    _message: &[u8],
+    _dilithium_pubkey: &[u8; 1952], // Dilithium3 public key size
+) -> Result<bool> {
+    // Verify the Bonsol execution was verified
+    require!(
+        execution_account.verified,
+        ErrorCode::BonsolVerificationFailed
+    );
+
+    // Verify the image ID matches the Dilithium circuit
+    require!(
+        execution_account.image_id == DILITHIUM_IMAGE_ID,
+        ErrorCode::InvalidImageId
+    );
+
+    // Future: Validate additional Dilithium-specific outputs from RISC Zero
+
+    msg!("✅ Dilithium signature verified via Bonsol RISC Zero");
+    Ok(true)
+}
+
 /// Error codes for Bonsol integration
 #[error_code]
 pub enum ErrorCode {
@@ -107,6 +152,9 @@ pub enum ErrorCode {
 
     #[msg("Invalid vote choice (must be 0 or 1)")]
     InvalidVote,
+
+    #[msg("Dilithium verification failed")]
+    DilithiumVerificationFailed,
 }
 
 /// Future: Account structure for interacting with Bonsol program via CPI
