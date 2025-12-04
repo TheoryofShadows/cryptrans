@@ -80,7 +80,7 @@ pub fn verify_dilithium_signature(
     msg!("  Message length: {}", message.len());
     msg!("  Signature length: {}", signature.len());
     msg!("  Public key length: {}", public_key.len());
-    msg!("  Input hash: {:?}", input_hash.as_ref());
+    msg!("  Input hash: {:?}", input_hash.as_ref() as &[u8]);
 
     // Step 3: In production, verify Bonsol execution account
     // This would call bonsol_integration::verify_dilithium_execution()
