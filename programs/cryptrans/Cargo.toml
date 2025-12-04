@@ -21,6 +21,8 @@ anchor-lang = "0.30.1"
 anchor-spl = { version = "0.30.1", features = ["associated_token"] }
 sha2 = "0.10.8"
 hex = "0.4.3"
+# Note: tracing-subscriber is not compatible with Solana BPF (requires newer rustc)
+# Use it only in off-chain/testing code if needed
 # Quantum-safe post-quantum signatures (NIST FIPS 204 / ML-DSA / CRYSTALS-Dilithium)
 # Note: For now, using placeholder verification. Full Dilithium via Bonsol CPI or RISC Zero guest.
 # pqcrypto-dilithium = "0.5"  # Has getrandom, not BPF-compatible

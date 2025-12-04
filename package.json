@@ -36,5 +36,11 @@
     "web3"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "bigint-buffer": "^1.1.5"
+  },
+  "_comments": {
+    "security": "CVE-2025-3194: bigint-buffer vulnerability affects only test dependencies (@solana/spl-token). No fix available yet (1.1.6 doesn't exist on npm). Limited risk as not used in production on-chain code. Monitoring for upstream patch."
+  }
 }
