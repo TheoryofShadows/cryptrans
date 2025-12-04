@@ -1,4 +1,5 @@
 import { PublicKey, SystemProgram } from '@solana/web3.js';
+import * as anchor from '@coral-xyz/anchor';
 import { CrypTransClient } from './client';
 import { StakeInfo, TransactionResult } from './types';
 
@@ -8,13 +9,20 @@ export class StakingClient {
   async getStakeInfo(userAddress: PublicKey): Promise<StakeInfo | null> {
     try {
       const program = this.client.getProgram();
+      if (!program) {
+        throw new Error('Program not initialized - IDL not loaded');
+      }
+
       const [stakePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('stake'), userAddress.toBuffer()],
         program.programId
       );
 
-      const stake = await program.account.stake.fetch(stakePda);
-      return stake as StakeInfo;
+      // TODO: Fetch stake account when IDL is loaded
+      // const stake = await program.account.stake.fetch(stakePda);
+      // return stake as StakeInfo;
+      console.log('Stake PDA:', stakePda.toString());
+      return null; // Placeholder until IDL is loaded
     } catch (error) {
       console.error('Failed to fetch stake info:', error);
       return null;
@@ -24,6 +32,10 @@ export class StakingClient {
   async initializeStake(user: PublicKey): Promise<TransactionResult> {
     try {
       const program = this.client.getProgram();
+      if (!program) {
+        throw new Error('Program not initialized - IDL not loaded');
+      }
+
       const [stakePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('stake'), user.toBuffer()],
         program.programId
@@ -55,6 +67,10 @@ export class StakingClient {
   ): Promise<TransactionResult> {
     try {
       const program = this.client.getProgram();
+      if (!program) {
+        throw new Error('Program not initialized - IDL not loaded');
+      }
+
       const [stakePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('stake'), user.toBuffer()],
         program.programId

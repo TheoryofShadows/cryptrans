@@ -3,7 +3,6 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 use anchor_spl::associated_token::AssociatedToken;
 use sha2::{Sha256, Digest};
 
-mod groth16_verifier;
 mod oracle;
 mod tranche;
 mod bonsol_integration;
@@ -131,90 +130,7 @@ pub mod cryptrans {
         Ok(())
     }
 
-    /// ❌ DEPRECATED - QUANTUM-VULNERABLE: Uses Groth16 (elliptic curve pairings)
-    /// Use vote_with_stark() instead for quantum-safe anonymous voting
-    ///
-    /// This function uses Groth16 ZK-SNARKs which rely on BLS12-381 elliptic curve pairings.
-    /// Quantum computers can break elliptic curves via Shor's algorithm.
-    /// Keeping for backward compatibility but marked as insecure.
-    #[deprecated(
-        since = "0.2.0",
-        note = "QUANTUM-VULNERABLE! Use vote_with_stark() for quantum-safe voting"
-    )]
-    pub fn vote_with_zk(
-        ctx: Context<Vote>,
-        nullifier: [u8; 32],
-        commitment: [u8; 32],
-        proof_a: Vec<u8>,
-        proof_b: Vec<u8>,
-        proof_c: Vec<u8>,
-    ) -> Result<()> {
-        let current_time = Clock::get()?.unix_timestamp as u64;
 
-        // ===== Step 0: Check Proposal Not Expired =====
-        let proposal = &ctx.accounts.proposal;
-        require!(current_time <= proposal.expires_at, ErrorCode::ProposalExpired);
-
-        // ===== Step 1: Verify ZK Proof Using Groth16 Verifier =====
-        // Verify proof structure and validate that proof elements are non-zero
-        let min_stake = [0u8; 32]; // Will be extracted from commitment in circuit
-        // Use heap-allocated Vecs to avoid large stack-frame copies
-        let proof_valid = groth16_verifier::verify_proof_structure(
-            proof_a.as_slice(),
-            proof_b.as_slice(),
-            proof_c.as_slice(),
-            &nullifier,
-            &commitment,
-            &min_stake,
-        );
-
-        require!(proof_valid, ErrorCode::InvalidZKProof);
-
-        // ===== Step 2: Verify Commitment Matches Registered Commitment =====
-        let stake = &ctx.accounts.stake;
-        require!(
-            stake.commitment == commitment,
-            ErrorCode::CommitmentMismatch
-        );
-
-        // ===== Step 3: Check Nullifier Not Used (Prevent Double-Voting) =====
-        let vote_record = &mut ctx.accounts.vote_record;
-        require!(!vote_record.has_voted, ErrorCode::AlreadyVoted);
-
-        // ===== Step 4: Store Nullifier =====
-        vote_record.nullifier = nullifier;
-        vote_record.has_voted = true;
-        vote_record.voted_at = current_time;
-
-        // ===== Step 5: Apply Demurrage and Calculate Vote Weight =====
-        let config = &ctx.accounts.config;
-        let mut adjusted_stake = stake.amount;
-
-        if current_time > stake.last_demurrage {
-            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
-            // Use demurrage_rate from config
-            let decay = adjusted_stake
-                .checked_mul(config.demurrage_rate).unwrap()
-                .checked_mul(time_elapsed).unwrap()
-                .checked_div(365 * 24 * 3600 * 10000).unwrap();
-            adjusted_stake = adjusted_stake.checked_sub(decay).unwrap_or(adjusted_stake);
-        }
-
-        // ===== Step 6: Add Vote (Anonymous!) =====
-        let proposal = &mut ctx.accounts.proposal;
-        proposal.votes = proposal.votes.checked_add(adjusted_stake).unwrap();
-        vote_record.vote_weight = adjusted_stake;
-
-        // Emit event for transparency (without revealing voter)
-        emit!(VoteEvent {
-            proposal_id: proposal.id,
-            nullifier,
-            vote_weight: adjusted_stake,
-            timestamp: current_time,
-        });
-
-        Ok(())
-    }
 
     /// Fallback: Vote without ZK (for testing/development only)
     /// WARNING: This reveals your identity! Use vote_with_zk for privacy
@@ -642,9 +558,9 @@ pub mod cryptrans {
         tranches: Vec<TrancheInput>,
     ) -> Result<()> {
         // Validate inputs
-        require!(project_name.len() > 0 && project_name.len() <= 128, ErrorCode::ProjectNameTooLong);
+        require!(!project_name.is_empty() && project_name.len() <= 128, ErrorCode::ProjectNameTooLong);
         require!(project_description.len() <= 1000, ErrorCode::ProjectDescriptionTooLong);
-        require!(tranches.len() >= 1 && tranches.len() <= 10, ErrorCode::InvalidTrancheCount);
+        require!(!tranches.is_empty() && tranches.len() <= 10, ErrorCode::InvalidTrancheCount);
 
         // Validate tranche sequence and unlock dates
         let mut last_unlock_date = 0u64;
@@ -1988,4 +1904,3 @@ pub struct ArchiveProjectMilestoneContext<'info> {
     #[account(mut)]
     pub archiver: Signer<'info>,
 }
-

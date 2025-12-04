@@ -62,4 +62,3 @@ template AnonymousVote() {
 }
 
 component main {public [nullifier, commitment, minStake, root]} = AnonymousVote();
-

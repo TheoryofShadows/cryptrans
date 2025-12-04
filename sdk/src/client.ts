@@ -2,11 +2,12 @@ import { Connection, PublicKey, Keypair, Transaction } from '@solana/web3.js';
 import * as anchor from '@coral-xyz/anchor';
 import { CrypTransConfig, TransactionResult } from './types';
 import { logger } from './utils';
+import idl from '../../target/idl/cryptrans.json';
 
 export class CrypTransClient {
   private connection: Connection;
   private provider: anchor.AnchorProvider;
-  private program: anchor.Program;
+  private program?: anchor.Program;
   private config: CrypTransConfig;
 
   constructor(config: CrypTransConfig, wallet: anchor.Wallet) {
@@ -18,12 +19,8 @@ export class CrypTransClient {
       { commitment: 'confirmed' }
     );
 
-    // IDL would be loaded from the program
-    this.program = new anchor.Program(
-      {} as any, // IDL would go here
-      config.programId,
-      this.provider
-    );
+    // TODO: Initialize program with IDL when type issues are resolved
+    // this.program = new anchor.Program(idl as any, config.programId, this.provider);
   }
 
   getConnection(): Connection {
@@ -34,17 +31,13 @@ export class CrypTransClient {
     return this.provider;
   }
 
-  getProgram(): anchor.Program {
+  getProgram(): anchor.Program | undefined {
     return this.program;
   }
 
   async sendTransaction(tx: Transaction): Promise<TransactionResult> {
     try {
-      const signature = await anchor.web3.sendAndConfirmTransaction(
-        this.connection,
-        tx,
-        [this.provider.wallet.payer]
-      );
+      const signature = await this.provider.sendAndConfirm(tx);
 
       logger.info(`Transaction confirmed: ${signature}`);
 
@@ -79,9 +72,3 @@ export class CrypTransClient {
     return new CrypTransClient(config, wallet);
   }
 }
-
-let logger = {
-  info: (msg: string, data?: any) => console.log(`[INFO] ${msg}`, data || ''),
-  error: (msg: string, error?: any) => console.error(`[ERROR] ${msg}`, error || ''),
-  warn: (msg: string, data?: any) => console.warn(`[WARN] ${msg}`, data || '')
-};

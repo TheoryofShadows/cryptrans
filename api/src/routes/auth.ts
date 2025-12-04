@@ -37,11 +37,9 @@ router.post('/login', (req: LoginRequest, res: Response) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      { address },
-      config.jwtSecret,
-      { expiresIn: config.jwtExpiry }
-    );
+    const token = jwt.sign({ address }, config.jwtSecret, {
+      expiresIn: '24h'
+    });
 
     logger.info(`User ${address} authenticated successfully`);
 

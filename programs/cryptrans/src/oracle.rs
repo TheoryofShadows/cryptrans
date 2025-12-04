@@ -5,7 +5,6 @@
 ///
 /// It honors Szabo's smart contracts by making fund release fully automated and verifiable:
 /// "Money released when the world proves the milestone happened."
-
 use anchor_lang::prelude::*;
 
 /// Types of milestone verification

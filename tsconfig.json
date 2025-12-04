@@ -5,6 +5,19 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": false,
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "api/**/*",
+    "sdk/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "programs",
+    "circuits",
+    "zkproof",
+    "app"
+  ]
 }

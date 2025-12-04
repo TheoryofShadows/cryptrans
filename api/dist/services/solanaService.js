@@ -1,0 +1,93 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.solanaService = exports.SolanaService = void 0;
+const web3_js_1 = require("@solana/web3.js");
+const anchor = __importStar(require("@coral-xyz/anchor"));
+const config_1 = require("../config");
+const logger_1 = require("../utils/logger");
+class SolanaService {
+    constructor() {
+        this.connection = new web3_js_1.Connection(config_1.config.solanaRpcUrl, 'confirmed');
+        const wallet = new anchor.Wallet(web3_js_1.Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_KEYPAIR || '[]'))));
+        this.provider = new anchor.AnchorProvider(this.connection, wallet, { commitment: 'confirmed' });
+    }
+    getConnection() {
+        return this.connection;
+    }
+    getProvider() {
+        return this.provider;
+    }
+    async getBalance(publicKey) {
+        try {
+            const key = new web3_js_1.PublicKey(publicKey);
+            const balance = await this.connection.getBalance(key);
+            return balance / 1e9; // Convert lamports to SOL
+        }
+        catch (error) {
+            logger_1.logger.error('Error getting balance', error);
+            throw new Error('Failed to get balance');
+        }
+    }
+    async sendTransaction(transaction, signers) {
+        try {
+            const signature = await anchor.web3.sendAndConfirmTransaction(this.connection, transaction, signers);
+            return signature;
+        }
+        catch (error) {
+            logger_1.logger.error('Error sending transaction', error);
+            throw new Error('Failed to send transaction');
+        }
+    }
+    async getTokenBalance(walletAddress, mintAddress) {
+        try {
+            const wallet = new web3_js_1.PublicKey(walletAddress);
+            const mint = new web3_js_1.PublicKey(mintAddress);
+            const ata = anchor.utils.token.associatedAddress({
+                mint,
+                owner: wallet
+            });
+            const accountInfo = await this.connection.getTokenAccountBalance(ata);
+            return parseFloat(accountInfo.value.amount) / Math.pow(10, accountInfo.value.decimals);
+        }
+        catch (error) {
+            logger_1.logger.error('Error getting token balance', error);
+            return 0;
+        }
+    }
+}
+exports.SolanaService = SolanaService;
+exports.solanaService = new SolanaService();
+//# sourceMappingURL=solanaService.js.map

@@ -24,7 +24,7 @@ export class ProposalService {
 
       // Derive PDA for proposal account
       const [proposalPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from('proposal'), Buffer.from([proposalId])],''),
+        [Buffer.from('proposal'), Buffer.from([proposalId])],
         programId
       );
 

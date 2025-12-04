@@ -12,7 +12,6 @@
 ///
 /// This honors Szabo's original smart contract vision: "The money waits. The ledger waits.
 /// When the world proves you succeeded, the contract executes automatically."
-
 use anchor_lang::prelude::*;
 
 /// Status of a transhuman project

@@ -4,7 +4,7 @@
 
 CrypTrans embodies cypherpunk and Extropian visions for funding transhuman projects: cryonics, whole-brain emulation, asteroid mining, and von Neumann probes.
 
-**Program ID (Devnet)**: `57wFcRcKLeU2WuUbadwXR56TtdgijAFQX8X73PqDURVn`
+**Program ID (Devnet)**: `57wFcRcKLeU2WuUbadwXR56TtdgijAFQX8X73PqDURVn` ✅ **DEPLOYED**
 
 ---
 

@@ -13,6 +13,10 @@ export class VotingClient {
   ): Promise<TransactionResult> {
     try {
       const program = this.client.getProgram();
+      if (!program) {
+        throw new Error('Program not initialized - IDL not loaded');
+      }
+
       const [proposalPda] = PublicKey.findProgramAddressSync(
         [Buffer.from('proposal'), Buffer.from([proposalId])],
         program.programId
@@ -55,6 +59,10 @@ export class VotingClient {
   ): Promise<TransactionResult> {
     try {
       const program = this.client.getProgram();
+      if (!program) {
+        throw new Error('Program not initialized - IDL not loaded');
+      }
+
       const [stakePda] = PublicKey.findProgramAddressSync(
         [Buffer.from('stake'), user.toBuffer()],
         program.programId

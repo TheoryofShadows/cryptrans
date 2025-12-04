@@ -3,13 +3,13 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
-export interface AuthRequest extends Request {
+export type AuthRequest = Request & {
   user?: {
     address: string;
     iat: number;
     exp: number;
   };
-}
+};
 
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;

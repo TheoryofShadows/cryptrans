@@ -1,0 +1,35 @@
+{
+  "name": "@cryptrans/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for CrypTrans DAO",
+  "main": "index.ts",
+  "bin": {
+    "cryptrans": "./index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn index.ts"
+  },
+  "keywords": [
+    "solana",
+    "dao",
+    "cli",
+    "blockchain",
+    "governance"
+  ],
+  "author": "CrypTrans Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@solana/web3.js": "^1.88.0",
+    "commander": "^11.1.0",
+    "inquirer": "^9.2.12",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node-dev": "^2.0.0"
+  }
+}
