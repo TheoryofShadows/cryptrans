@@ -7,14 +7,13 @@ import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import '@solana/wallet-adapter-react-ui/styles.css';
 import './App.css';
 import * as anchor from '@coral-xyz/anchor';
-import * as crypto from 'crypto';
 
 import Header from './components/Header';
 import StatsPanel from './components/StatsPanel';
 import ProposalsList from './components/ProposalsList';
 
 // Import ZK proof system
-import { initZK, generateVoteProof, getUserSecret } from './zkProver';
+import { initZK, generateVoteProof, generateSecretFromWallet } from './zkProver';
 
 // Program ID - update this to match your deployed program
 const PROGRAM_ID = new PublicKey(process.env.REACT_APP_PROGRAM_ID || 'B4Cq9PHn4wXA7k4mHdqeYVuRRQvZTGh9S6wqaiiSA1yK');
@@ -45,7 +44,7 @@ function CrypTransApp() {
     if (!wallet.publicKey) return null;
     const provider = new anchor.AnchorProvider(connection, wallet, anchor.AnchorProvider.defaultOptions());
     return new anchor.Program(IDL, PROGRAM_ID, provider);
-  }, [wallet.publicKey, connection, wallet]);
+  }, [wallet.publicKey, connection]);
 
   // Initialize ZK system
   useEffect(() => {
@@ -176,15 +175,14 @@ function CrypTransApp() {
     try {
       setStatus('🔄 Generating zero-knowledge proof...');
 
-      // Get user secret
-      const secret = getUserSecret();
+      // Generate secure secret from wallet signature
+      const secret = await generateSecretFromWallet(wallet);
 
-      // Generate ZK proof
+      // Generate ZK proof using actual stake amount for voting weight
       const proofData = await generateVoteProof({
         secret,
         stakeAmount: userStake.amount.toString(),
         proposalId: selectedProposal.id,
-        minStake: config?.votingThreshold || '1000000000',
       });
 
       setStatus('📡 Submitting anonymous vote to Solana...');
@@ -253,7 +251,7 @@ function CrypTransApp() {
         const proposalId = Math.floor(Math.random() * 1000000);
 
         // Get required PDAs
-        const [proposalPda, proposalBump] = PublicKey.findProgramAddressSync(
+        const [proposalPda] = PublicKey.findProgramAddressSync(
           [Buffer.from('proposal'), new anchor.BN(proposalId).toArrayLike(Buffer, 'le', 8)],
           PROGRAM_ID
         );
