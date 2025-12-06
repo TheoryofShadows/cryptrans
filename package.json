@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@coral-xyz/anchor": "^0.30.1",
+    "@coral-xyz/anchor-cli": "^0.31.2",
     "@solana/spl-token": "^0.4.9",
     "@types/chai": "^4.3.11",
     "@types/mocha": "^10.0.6",
@@ -37,9 +38,9 @@
   ],
   "author": "Your Name",
   "license": "MIT",
-  "dependencies": {},
   "overrides": {
-    "bigint-buffer": "1.1.5"
+    "bigint-buffer": "^1.1.5",
+    "@solana/buffer-layout-utils": "^0.2.0"
   },
   "_comments": {
     "security": "CVE-2025-3194: bigint-buffer vulnerability in test dependencies only. No upstream fix available (reported 7/9/2025, no patch released). Risk: DoS only, limited to test environment, not production on-chain code. Using latest available version (1.1.5). Will upgrade when patched version released."
