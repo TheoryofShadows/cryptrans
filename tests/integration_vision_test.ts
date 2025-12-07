@@ -160,7 +160,7 @@ describe("CrypTrans Phase 3: The Vision Encapsulated", () => {
     it("Step 3.1: Community votes YES on project (ZK anonymous voting)", async () => {
       console.log("\n🗳️  PHASE 3.1: COMMUNITY VOTING");
       console.log("Vision: Anonymous stakeholders vote without revealing identity");
-      console.log("Mechanism: Groth16 zero-knowledge proofs + nullifier voting\n");
+      console.log("Mechanism: RISC Zero STARK proofs (quantum-safe) + nullifier voting\n");
 
       const voters = [
         { name: "Voter 1", stake: 10000, vote: "YES", reason: "Supports transhuman acceleration" },

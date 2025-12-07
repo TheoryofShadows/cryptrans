@@ -392,7 +392,10 @@ describe("cryptrans", () => {
       };
     }
 
-    it("Registers commitment for ZK proof", async () => {
+    // ⚠️ DEPRECATED: These tests use vote_with_zk (Groth16) which has been removed
+    // TODO: Migrate to vote_with_stark (RISC Zero STARKs via Bonsol)
+    // vote_with_zk was deprecated as quantum-vulnerable
+    it.skip("Registers commitment for ZK proof", async () => {
       // Generate a test commitment (in production, this is Poseidon(secret))
       const commitment = Array(32).fill(1); // Non-zero commitment
 
@@ -410,7 +413,7 @@ describe("cryptrans", () => {
       assert.ok(stakeAccount.commitment.every((b, i) => b === commitment[i]));
     });
 
-    it("Casts vote successfully with ZK proof", async () => {
+    it.skip("Casts vote successfully with ZK proof", async () => {
       [voteRecordPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("vote"), proposalPda.toBuffer(), payer.publicKey.toBuffer()],
         program.programId
@@ -450,7 +453,7 @@ describe("cryptrans", () => {
       assert.ok(voteRecord.voteWeight.toNumber() > 0);
     });
 
-    it("Prevents double voting with nullifier check", async () => {
+    it.skip("Prevents double voting with nullifier check", async () => {
       const proof = generateMockProof();
       const nullifier = Array(32).fill(2);
       const commitment = Array(32).fill(1);
@@ -481,7 +484,7 @@ describe("cryptrans", () => {
       }
     });
 
-    it("Rejects zero proof (Groth16 structural validation)", async () => {
+    it.skip("Rejects zero proof (Groth16 structural validation)", async () => {
       // Create a second user to test with
       const user2 = Keypair.generate();
 
