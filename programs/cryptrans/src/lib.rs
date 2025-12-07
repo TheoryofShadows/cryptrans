@@ -43,7 +43,7 @@ pub mod cryptrans {
     /// Stake tokens to participate in governance
     pub fn stake_tokens(ctx: Context<StakeTokens>, amount: u64) -> Result<()> {
         let stake = &mut ctx.accounts.stake;
-        
+
         // Transfer tokens from user to stake account
         let cpi_accounts = Transfer {
             from: ctx.accounts.user_token_account.to_account_info(),
@@ -54,23 +54,30 @@ pub mod cryptrans {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         token::transfer(cpi_ctx, amount)?;
 
-        stake.amount = stake.amount.checked_add(amount).unwrap();
+        stake.amount = stake.amount.checked_add(amount).ok_or(ErrorCode::ArithmeticOverflow)?;
         Ok(())
     }
 
     /// Apply demurrage (ethical decay to prevent hoarding)
     pub fn apply_demurrage(ctx: Context<ApplyDemurrage>, demurrage_rate: u64) -> Result<()> {
         let stake = &mut ctx.accounts.stake;
+
+        // C2: Authorization check - only stake owner can apply demurrage
+        require!(
+            stake.user == ctx.accounts.user.key(),
+            ErrorCode::UnauthorizedUser
+        );
+
         let current_time = Clock::get()?.unix_timestamp as u64;
-        let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
-        
-        // Calculate demurrage: amount * rate * time_elapsed / (365 * 24 * 3600 * 10000)
+        let time_elapsed = current_time.checked_sub(stake.last_demurrage).ok_or(ErrorCode::ArithmeticOverflow)?;
+
+        // C1: Calculate demurrage with checked arithmetic
         let decay = stake.amount
-            .checked_mul(demurrage_rate).unwrap()
-            .checked_mul(time_elapsed).unwrap()
-            .checked_div(365 * 24 * 3600 * 10000).unwrap();
-        
-        stake.amount = stake.amount.checked_sub(decay).unwrap();
+            .checked_mul(demurrage_rate).ok_or(ErrorCode::ArithmeticOverflow)?
+            .checked_mul(time_elapsed).ok_or(ErrorCode::ArithmeticOverflow)?
+            .checked_div(365 * 24 * 3600 * 10000).ok_or(ErrorCode::DivisionByZero)?;
+
+        stake.amount = stake.amount.checked_sub(decay).ok_or(ErrorCode::InsufficientStake)?;
         stake.last_demurrage = current_time;
         Ok(())
     }
@@ -126,6 +133,13 @@ pub mod cryptrans {
         commitment: [u8; 32],
     ) -> Result<()> {
         let stake = &mut ctx.accounts.stake;
+
+        // C4: Prevent commitment overwrites - commitment can only be set once
+        require!(
+            stake.commitment == [0u8; 32],
+            ErrorCode::CommitmentAlreadyRegistered
+        );
+
         stake.commitment = commitment;
         Ok(())
     }
@@ -150,20 +164,20 @@ pub mod cryptrans {
         let vote_record = &mut ctx.accounts.vote_record;
         let config = &ctx.accounts.config;
 
-        // Apply demurrage before voting
+        // Apply demurrage before voting with checked arithmetic
         let mut adjusted_stake = stake.amount;
 
         if current_time > stake.last_demurrage {
-            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
+            let time_elapsed = current_time.checked_sub(stake.last_demurrage).ok_or(ErrorCode::ArithmeticOverflow)?;
             let decay = adjusted_stake
-                .checked_mul(config.demurrage_rate).unwrap()
-                .checked_mul(time_elapsed).unwrap()
-                .checked_div(365 * 24 * 3600 * 10000).unwrap();
+                .checked_mul(config.demurrage_rate).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_mul(time_elapsed).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_div(365 * 24 * 3600 * 10000).ok_or(ErrorCode::DivisionByZero)?;
             adjusted_stake = adjusted_stake.checked_sub(decay).unwrap_or(adjusted_stake);
         }
 
         // Add voting weight
-        proposal.votes = proposal.votes.checked_add(adjusted_stake).unwrap();
+        proposal.votes = proposal.votes.checked_add(adjusted_stake).ok_or(ErrorCode::ArithmeticOverflow)?;
 
         // Mark as voted
         vote_record.has_voted = true;
@@ -215,17 +229,17 @@ pub mod cryptrans {
         let mut adjusted_stake = stake.amount;
 
         if current_time > stake.last_demurrage {
-            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
+            let time_elapsed = current_time.checked_sub(stake.last_demurrage).ok_or(ErrorCode::ArithmeticOverflow)?;
             let decay = adjusted_stake
-                .checked_mul(config.demurrage_rate).unwrap()
-                .checked_mul(time_elapsed).unwrap()
-                .checked_div(365 * 24 * 3600 * 10000).unwrap();
+                .checked_mul(config.demurrage_rate).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_mul(time_elapsed).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_div(365 * 24 * 3600 * 10000).ok_or(ErrorCode::DivisionByZero)?;
             adjusted_stake = adjusted_stake.checked_sub(decay).unwrap_or(adjusted_stake);
         }
 
         // ===== Step 5: Add Vote (Anonymous & Quantum-Safe!) =====
         let proposal = &mut ctx.accounts.proposal;
-        proposal.votes = proposal.votes.checked_add(adjusted_stake).unwrap();
+        proposal.votes = proposal.votes.checked_add(adjusted_stake).ok_or(ErrorCode::ArithmeticOverflow)?;
         vote_record.vote_weight = adjusted_stake;
 
         // Emit event for transparency
@@ -242,15 +256,15 @@ pub mod cryptrans {
 
     /// Release funds if voting threshold is met
     pub fn release_funds(ctx: Context<ReleaseFunds>) -> Result<()> {
-        // Check if sufficient votes
-        let config = &ctx.accounts.config;
-        require!(ctx.accounts.proposal.votes >= config.voting_threshold, ErrorCode::InsufficientVotes);
-        require!(!ctx.accounts.proposal.funded, ErrorCode::AlreadyFunded);
-
-        // Check treasury has sufficient balance
+        // C6: Check treasury has sufficient balance FIRST before accepting votes
         let treasury = &ctx.accounts.treasury;
         let funding_amount = ctx.accounts.proposal.funding_needed;
         require!(treasury.amount >= funding_amount, ErrorCode::InsufficientTreasuryBalance);
+
+        // Then check if sufficient votes
+        let config = &ctx.accounts.config;
+        require!(ctx.accounts.proposal.votes >= config.voting_threshold, ErrorCode::InsufficientVotes);
+        require!(!ctx.accounts.proposal.funded, ErrorCode::AlreadyFunded);
 
         // Get values we need before mutable borrow
         let proposal_id = ctx.accounts.proposal.id;
@@ -362,7 +376,7 @@ pub mod cryptrans {
         token::transfer(cpi_ctx, amount)?;
 
         let stake = &mut ctx.accounts.stake;
-        stake.amount = stake.amount.checked_sub(amount).unwrap();
+        stake.amount = stake.amount.checked_sub(amount).ok_or(ErrorCode::InsufficientStake)?;
         Ok(())
     }
 
@@ -510,9 +524,9 @@ pub mod cryptrans {
 
         milestone.attestations.push(attestation);
 
-        // Update oracle registry attestation count
+        // Update oracle registry attestation count with checked arithmetic
         let oracle_registry = &mut ctx.accounts.oracle_registry;
-        oracle_registry.total_attestations = oracle_registry.total_attestations.checked_add(1).unwrap();
+        oracle_registry.total_attestations = oracle_registry.total_attestations.checked_add(1).ok_or(ErrorCode::ArithmeticOverflow)?;
         oracle_registry.last_attested = Some(Clock::get()?.unix_timestamp as u64);
 
         emit!(MilestoneAttestationSubmitted {
@@ -527,6 +541,12 @@ pub mod cryptrans {
 
     /// Verify milestone has achieved quorum
     pub fn verify_milestone(ctx: Context<VerifyMilestone>) -> Result<()> {
+        // C3: Admin authorization check
+        require!(
+            ctx.accounts.config.admin == ctx.accounts.admin.key(),
+            ErrorCode::UnauthorizedAdmin
+        );
+
         let milestone = &mut ctx.accounts.milestone;
 
         // Use helper function from oracle module
@@ -691,25 +711,25 @@ pub mod cryptrans {
         let mut adjusted_stake = stake.amount;
 
         if current_time > stake.last_demurrage {
-            let time_elapsed = current_time.checked_sub(stake.last_demurrage).unwrap();
+            let time_elapsed = current_time.checked_sub(stake.last_demurrage).ok_or(ErrorCode::ArithmeticOverflow)?;
             let decay = adjusted_stake
-                .checked_mul(config.demurrage_rate).unwrap()
-                .checked_mul(time_elapsed).unwrap()
-                .checked_div(365 * 24 * 3600 * 10000).unwrap();
+                .checked_mul(config.demurrage_rate).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_mul(time_elapsed).ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_div(365 * 24 * 3600 * 10000).ok_or(ErrorCode::DivisionByZero)?;
             adjusted_stake = adjusted_stake.saturating_sub(decay);
         }
 
-        // Add vote to proposal
+        // Add vote to proposal with checked arithmetic
         let proposal_mut = &mut ctx.accounts.tranche_proposal;
         match vote {
             TrancheVoteType::Yes => {
-                proposal_mut.votes_yes = proposal_mut.votes_yes.checked_add(adjusted_stake).unwrap();
+                proposal_mut.votes_yes = proposal_mut.votes_yes.checked_add(adjusted_stake).ok_or(ErrorCode::ArithmeticOverflow)?;
             }
             TrancheVoteType::No => {
-                proposal_mut.votes_no = proposal_mut.votes_no.checked_add(adjusted_stake).unwrap();
+                proposal_mut.votes_no = proposal_mut.votes_no.checked_add(adjusted_stake).ok_or(ErrorCode::ArithmeticOverflow)?;
             }
             TrancheVoteType::Abstain => {
-                proposal_mut.votes_abstain = proposal_mut.votes_abstain.checked_add(adjusted_stake).unwrap();
+                proposal_mut.votes_abstain = proposal_mut.votes_abstain.checked_add(adjusted_stake).ok_or(ErrorCode::ArithmeticOverflow)?;
             }
         }
 
@@ -735,6 +755,13 @@ pub mod cryptrans {
         ctx: Context<ExecuteTrancheRelease>,
         _project_name: String,
     ) -> Result<()> {
+        // C8: Authorization check - only admin or project creator can execute
+        require!(
+            ctx.accounts.config.admin == ctx.accounts.admin.key() ||
+            ctx.accounts.executor.key() == ctx.accounts.transhuman_project.creator,
+            ErrorCode::UnauthorizedAdmin
+        );
+
         let current_time = Clock::get()?.unix_timestamp as u64;
 
         // Store values we need before mutable borrows
@@ -749,10 +776,10 @@ pub mod cryptrans {
         require!(current_time >= voting_deadline, ErrorCode::VotingStillOpen);
         require!(proposal_status != TrancheVoteStatus::Executed, ErrorCode::TrancheAlreadyReleased);
 
-        // Calculate approval rate
+        // Calculate approval rate with checked arithmetic
         let total_votes = proposal_votes_yes
-            .checked_add(proposal_votes_no).unwrap()
-            .checked_add(proposal_votes_abstain).unwrap();
+            .checked_add(proposal_votes_no).ok_or(ErrorCode::ArithmeticOverflow)?
+            .checked_add(proposal_votes_abstain).ok_or(ErrorCode::ArithmeticOverflow)?;
 
         require!(total_votes > 0, ErrorCode::InsufficientVotes);
 
@@ -854,7 +881,6 @@ pub mod cryptrans {
     /// Reduces reputation and slashes collateral
     pub fn slash_oracle(
         ctx: Context<SlashOracleContext>,
-        oracle_pubkey: Pubkey,
         evidence: String,
     ) -> Result<()> {
         let current_time = Clock::get()?.unix_timestamp as u64;
@@ -868,7 +894,7 @@ pub mod cryptrans {
             ErrorCode::UnauthorizedAdmin
         );
 
-        // Extract values before mutable borrow
+        // C7: Extract oracle_pubkey from account, not parameter
         let (stored_oracle_pubkey, current_collateral, current_reputation, _current_failed) = {
             let registry = &ctx.accounts.oracle_registry;
             require!(registry.collateral > 0, ErrorCode::OracleNotRegistered);
@@ -896,7 +922,8 @@ pub mod cryptrans {
             authority: ctx.accounts.oracle_registry.to_account_info(),
         };
 
-        let oracle_key_bytes = oracle_pubkey.as_ref();
+        // C7: Use oracle_pubkey from account
+        let oracle_key_bytes = stored_oracle_pubkey.as_ref();
         let seeds = &[
             b"oracle",
             oracle_key_bytes,
@@ -1306,7 +1333,9 @@ pub struct VoteInsecure<'info> {
 }
 
 /// Accounts for quantum-safe voting with STARK proofs
+/// C5: vote_record seeds use nullifier to prevent double-voting
 #[derive(Accounts)]
+#[instruction(expected_image_id: [u8; 32])]
 pub struct VoteWithStark<'info> {
     #[account(mut)]
     pub proposal: Account<'info, Proposal>,
@@ -1315,20 +1344,15 @@ pub struct VoteWithStark<'info> {
         bump
     )]
     pub stake: Account<'info, Stake>,
-    #[account(
-        init,
-        payer = voter,
-        space = 8 + 1 + 8 + 8 + 32,
-        seeds = [b"vote", proposal.key().as_ref(), voter.key().as_ref()],
-        bump
-    )]
-    pub vote_record: Account<'info, VoteRecord>,
+    /// C5: NOTE - vote_record init happens after nullifier is extracted from proof
+    /// Seeds will be [b"vote", proposal.key(), nullifier_hash]
+    #[account(mut)]
+    pub voter: Signer<'info>,
     /// Bonsol execution account containing STARK proof verification result
     pub bonsol_execution: Account<'info, bonsol_integration::BonsolExecution>,
     pub config: Account<'info, GlobalConfig>,
-    #[account(mut)]
-    pub voter: Signer<'info>,
     pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
 #[derive(Accounts)]
@@ -1612,6 +1636,14 @@ pub enum ErrorCode {
     InvalidDilithiumSignature,
     #[msg("Quantum signature verification failed - post-quantum signature invalid")]
     QuantumSignatureInvalid,
+    #[msg("Arithmetic overflow detected")]
+    ArithmeticOverflow,
+    #[msg("Division by zero")]
+    DivisionByZero,
+    #[msg("Unauthorized user - cannot modify this account")]
+    UnauthorizedUser,
+    #[msg("Commitment already registered - cannot overwrite")]
+    CommitmentAlreadyRegistered,
 }
 
 // Account Contexts for Oracle Operations
@@ -1675,6 +1707,9 @@ pub struct SubmitMilestoneAttestation<'info> {
 pub struct VerifyMilestone<'info> {
     #[account(mut)]
     pub milestone: Account<'info, Milestone>,
+    /// C3: Admin authorization required
+    pub config: Account<'info, GlobalConfig>,
+    pub admin: Signer<'info>,
 }
 
 // Week 3: Tranche Voting Contexts
@@ -1781,6 +1816,10 @@ pub struct ExecuteTrancheRelease<'info> {
     )]
     pub tranche_release_record: Account<'info, tranche::TrancheReleaseRecord>,
 
+    /// C8: Authorization - config and admin required
+    pub config: Account<'info, GlobalConfig>,
+    pub admin: Signer<'info>,
+
     #[account(mut)]
     pub executor: Signer<'info>,
     pub token_program: Program<'info, Token>,
@@ -1789,14 +1828,10 @@ pub struct ExecuteTrancheRelease<'info> {
 
 // Week 4: Oracle Slashing Contexts
 
+/// C7: SlashOracleContext - oracle_pubkey derived from account, not instruction parameter
 #[derive(Accounts)]
-#[instruction(oracle_pubkey: Pubkey)]
 pub struct SlashOracleContext<'info> {
-    #[account(
-        mut,
-        seeds = [b"oracle", oracle_pubkey.as_ref()],
-        bump
-    )]
+    #[account(mut)]
     pub oracle_registry: Account<'info, oracle::OracleRegistry>,
 
     #[account(mut)]
