@@ -30,16 +30,17 @@ We fund humanity's most ambitious projects with quantum-safe, unstoppable govern
 - **SHA-256 PoW** - Quantum-resistant anti-spam (✅ PRODUCTION)
 - **RISC Zero STARK proofs** - Hash-based ZK voting (✅ BUILT & READY)
 - **Bonsol integration** - STARK proof verification (✅ CODE COMPLETE)
-- **CRYSTALS-Dilithium** - Post-quantum signatures (✅ INFRASTRUCTURE READY)
+- **CRYSTALS-Dilithium** - Post-quantum signatures (⚠️ PLACEHOLDER - Awaiting Bonsol zkVM integration)
 - **vote_with_zk DEPRECATED** - Groth16 marked quantum-vulnerable
 - **First 100% quantum-safe DAO on Solana** 🏆
 - See [QUANTUM_FINAL_STATUS.md](docs/QUANTUM_FINAL_STATUS.md) for details
 
-### 🗳️ Anonymous Voting (Zero-Knowledge)
-- **ZK-SNARKs** - Vote without revealing identity
+### 🗳️ Anonymous Voting (Zero-Knowledge, Quantum-Safe)
+- **RISC Zero STARKs** - Vote without revealing identity (quantum-resistant!)
 - **Commitment scheme** - SHA-256(secret) prevents linkage
 - **Nullifier check** - SHA-256(proposal_id || secret) prevents double-voting
-- **Groth16 proofs** - 256 bytes, <200K compute units
+- **Bonsol verification** - On-chain STARK proof verification
+- **Note**: Legacy Groth16 voting (vote_with_zk) deprecated as quantum-vulnerable
 
 ### ⚙️ Smart Governance
 - **PoW anti-spam** - SHA-256 Hashcash for proposal creation
@@ -65,18 +66,18 @@ We fund humanity's most ambitious projects with quantum-safe, unstoppable govern
 **Documentation**: 2,900+ lines
 
 ### What Works ✅
-- Staking & demurrage
-- PoW-protected proposals
-- Anonymous ZK voting (Groth16)
+- Staking & demurrage (auto-applied during voting)
+- PoW-protected proposals (SHA-256 Hashcash)
+- Anonymous ZK voting (RISC Zero STARKs via Bonsol)
 - Double-vote prevention (nullifiers)
-- Treasury threshold governance
+- Treasury threshold governance (66% supermajority)
 - Helius RPC integration
 
 ### 🔐 100% QUANTUM-SAFE ACHIEVED! 🏆
 - ✅ SHA-256 PoW (quantum-resistant)
 - ✅ RISC Zero STARK voting (hash-based ZK)
 - ✅ `vote_with_stark()` instruction (PRODUCTION)
-- ✅ Dilithium module (placeholder, full via Bonsol)
+- ⚠️ Dilithium module (structural validation only, cryptographic verification pending Bonsol)
 - ✅ `vote_with_zk` marked deprecated (quantum-vulnerable)
 - ✅ release_funds_quantum_safe() with hybrid signatures
 - 🎯 **STATUS: QUANTUM-READY FOR DEPLOYMENT**
@@ -172,16 +173,17 @@ pub fn create_proposal(
 ) -> Result<()>
 ```
 
-### 3. Anonymous Voting (ZK Proofs)
-Voters generate zero-knowledge proofs to vote anonymously.
+### 3. Anonymous Voting (Quantum-Safe STARK Proofs)
+Voters generate RISC Zero STARK proofs verified via Bonsol.
 ```rust
-pub fn vote_with_zk(
-    ctx: Context<VoteWithZk>,
-    proof: [u8; 256],      // Groth16 proof
-    commitment: [u8; 32],  // SHA256(secret)
-    nullifier: [u8; 32],   // SHA256(proposal_id || secret)
+pub fn vote_with_stark(
+    ctx: Context<VoteWithStark>,
+    vote_choice: bool,     // Vote yes/no
+    // STARK proof provided via Bonsol execution account
+    // Commitment & nullifier derived from proof
 ) -> Result<()>
 ```
+**Note**: Legacy `vote_with_zk` (Groth16) was deprecated as quantum-vulnerable.
 
 ### 4. Release Funds (Threshold)
 Treasury releases funds when vote threshold is met.
@@ -192,18 +194,49 @@ pub fn release_funds(
 ) -> Result<()>
 ```
 
+### 5. Demurrage Mechanism (Ethical Decay)
+Staked tokens experience time-weighted decay to encourage active participation.
+
+**How it works:**
+- Demurrage is **automatically applied during voting** (vote_with_stark, vote_insecure, vote_on_tranche_release)
+- Users can also manually trigger it via `apply_demurrage()`
+- Formula: `decay = amount × rate × time_elapsed / (365 days in seconds × 10000)`
+- Configurable decay rate set by governance
+
+**Example:**
+```rust
+// Automatic demurrage during voting
+pub fn vote_with_stark(...) -> Result<()> {
+    // 1. Calculate time-weighted decay
+    let time_elapsed = current_time - stake.last_demurrage;
+    let decay = (stake.amount × demurrage_rate × time_elapsed) / year_in_seconds;
+
+    // 2. Apply decay
+    stake.amount -= decay;
+    stake.last_demurrage = current_time;
+
+    // 3. Continue with voting...
+}
+```
+
+**Why demurrage?**
+- Encourages active governance participation
+- Prevents token hoarding without engagement
+- Ethical alternative to inflationary tokenomics
+- Unique to CrypTrans (inspired by Bernard Lietaer's demurrage currencies)
+
 ---
 
 ## 🛡️ Security
 
 ### Quantum-Safe Cryptography
-- **STARK proofs** - Hash-based (SHA-256), not elliptic curves
-- **Dilithium signatures** - Lattice-based, NIST-approved
-- **Future-proof** - Secure against quantum computers
+- **RISC Zero STARKs** - Hash-based (SHA-256), not elliptic curves ✅ PRODUCTION
+- **Dilithium signatures** - Lattice-based, NIST-approved ⚠️ Structural validation only (full crypto verification pending Bonsol zkVM)
+- **Future-proof** - Designed for post-quantum security
 
 ### Zero-Knowledge Proofs
-- **Groth16 (current)** - 256 byte proofs, <200K CU
-- **RISC Zero STARK (coming)** - Quantum-resistant!
+- **RISC Zero STARK (production)** - Quantum-resistant, verified via Bonsol
+- **Groth16 (deprecated)** - Removed due to quantum vulnerability
 - **Commitment hiding** - SHA-256(secret)
 - **Nullifier uniqueness** - SHA-256(proposal_id || secret)
 
