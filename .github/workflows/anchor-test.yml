@@ -30,23 +30,32 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          set -e
-          # Try official Solana installer with fallback mirrors
+          set -euo pipefail
+          # Try official Solana installer with retries; do not treat a failed curl as success.
+          installed=0
           for attempt in 1 2 3; do
             echo "Attempt $attempt to download Solana CLI..."
-            if curl -sSfL https://release.solana.com/v1.18.26/install | sh; then
+            if curl -fsSL https://release.solana.com/v1.18.26/install -o /tmp/solana-install.sh \
+              && sh /tmp/solana-install.sh; then
+              installed=1
               break
-            elif wget -qO- https://release.solana.com/v1.18.26/install | sh; then
+            elif wget -qO /tmp/solana-install.sh https://release.solana.com/v1.18.26/install \
+              && sh /tmp/solana-install.sh; then
+              installed=1
               break
-            elif [ $attempt -eq 3 ]; then
+            elif [ "$attempt" -eq 3 ]; then
               echo "Failed to download Solana CLI after 3 attempts. Continuing without it..."
-              exit 0
             else
               sleep 10
             fi
           done
-          echo "::add-path::${HOME}/.local/share/solana/install/active_release/bin"
-          solana --version || echo "Solana CLI not available, will use cargo sbpf"
+          if [ "$installed" -eq 1 ]; then
+            echo "${HOME}/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+            export PATH="${HOME}/.local/share/solana/install/active_release/bin:$PATH"
+            solana --version || echo "Solana CLI install reported success but binary missing"
+          else
+            echo "Solana CLI not available, will use cargo sbpf"
+          fi
 
       - name: Install Anchor CLI
         run: |
